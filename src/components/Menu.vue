@@ -89,6 +89,7 @@
             <div class="menu-separator-div"></div>           
             <a v-show="showMenu" :class="'strype-menu-link ' + scssVars.strypeMenuItemClassName" @click="openLoadDemoProjectModal">{{$t('appMenu.loadDemoProject')}}</a>
             <OpenDemoDlg ref="openDemoDlg" :dlg-id="loadDemoProjectModalDlgId"/>
+            <a v-show="showMenu" :class="'strype-menu-link ' + scssVars.strypeMenuItemClassName" >{{$t('appMenu.loadLesson')}}</a>
             /* IFTRUE_isPython
             <a v-show="showMenu" :class="'strype-menu-link ' + scssVars.strypeMenuItemClassName" @click="openLibraryDoc">{{$t('appMenu.apiDocumentation')}}</a>
                FITRUE_isPython */
@@ -1632,7 +1633,7 @@ export default Vue.extend({
     padding-top: 25px !important;
     // The border is partly designed by CSS, the width is dynamically assigned according to the menu state, see toggleMenuOnOff()
     border-right: black 0px solid;
-    z-index: 503; // higher index than the overlay and PEA, but less than context menus and dialog modals
+    z-index: 504; // higher index than the overlay and PEA, but less than context menus and dialog modals
 }
 
 .bm-item-list {

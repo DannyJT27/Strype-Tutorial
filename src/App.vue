@@ -1,103 +1,127 @@
 <template>
-    <div id="app" class="container-fluid print-full-height">
-        <div v-if="showAppProgress || setAppNotOnTop" :class="{'app-overlay-pane': true, 'app-progress-pane': showAppProgress}" @contextmenu="handleOverlayRightClick">
-            <div v-if="showAppProgress" class="app-progress-container">
-                <div class="progress">
-                    <div 
-                        class="progress-bar progress-bar-striped bg-info progress-bar-animated" 
-                        role="progressbar"
-                        style="width: 100%"
-                        aria-valuenow="100"
-                        aria-valuemin="0"
-                        aria-valuemax="100"
-                        >
-                        <span class="progress-bar-text">{{progressbarMessage}}</span>
+    <div id="app"> <!-- Wrapper for IDE so that the lesson panels can be rendered hovering over it-->
+        <div class="container-fluid print-full-height">
+            <div v-if="showAppProgress || setAppNotOnTop" :class="{'app-overlay-pane': true, 'app-progress-pane': showAppProgress}" @contextmenu="handleOverlayRightClick">
+                <div v-if="showAppProgress" class="app-progress-container">
+                    <div class="progress">
+                        <div 
+                            class="progress-bar progress-bar-striped bg-info progress-bar-animated" 
+                            role="progressbar"
+                            style="width: 100%"
+                            aria-valuenow="100"
+                            aria-valuemin="0"
+                            aria-valuemax="100"
+                            >
+                            <span class="progress-bar-text">{{progressbarMessage}}</span>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-        /* IFTRUE_isPython
-        <Splitpanes class="expanded-PEA-splitter-overlay strype-split-theme" v-show="isExpandedPythonExecArea" horizontal @resize=onExpandedPythonExecAreaSplitPaneResize>
-            <pane key="1" :size="100 - expandedPEAOverlaySplitterPane2Size">
-            </pane>
-            <pane ref="overlayExpandedPEAPane2Ref" key="2" :size="expandedPEAOverlaySplitterPane2Size" :min-size="peaOverlayPane2MinSize" :max-size="peaOverlayPane2MaxSize">
-            </pane>
-        </Splitpanes>
-        FITRUE_isPython */
-        <!-- Keep the style position of the row div to get proper z order layout of the app -->
-        <div class="row" style="position: relative;">
-            <Splitpanes class="strype-split-theme" @resize=onStrypeCommandsSplitPaneResize>
-                <Pane key="1" :size="100 - editorCommandsSplitterPane2Size" min-size="33" max-size="90">
-                    <!-- These data items are to enable testing: -->
-                    <div :id="editorId" :data-slot-focus-id="slotFocusId" :data-slot-cursor="slotCursorPos" class="print-full-height">
-                        <div class="top no-print">
-                            <MessageBanner 
-                                v-if="showMessage"
-                            />
-                        </div>
-                        <div class="row no-gutters" >
-                            <Menu 
-                                :id="menuUID" 
-                                :ref="menuUID"
-                                v-on:[CustomEventTypes.appShowProgressOverlay]="applyShowAppProgress"
-                                v-on:[CustomEventTypes.appResetProject]="resetStrypeProject"
-                                class="noselect no-print"
-                            />
-                            <div class="col">
-                                <div 
-                                    :id="editorUID" 
-                                    :class="{'editor-code-div noselect print-full-height':true/* IFTRUE_isPython , 'full-height-editor-code-div':!isExpandedPythonExecArea, [scssVars.croppedEditorDivClassName]: isExpandedPythonExecArea FITRUE_isPython */}"
-                                    @mousedown="handleWholeEditorMouseDown"
-                                >
-                                    <FrameHeader
-                                        :labels="projectDocLabels"
-                                        :frameId="-10"
-                                        :frameType="projectDocFrameType"
-                                        :isDisabled="false"
-                                        :frameAllowChildren="false"
-                                        :erroneous="false"
-                                        :wasLastRuntimeError="false"
-                                        :frameAllowedCollapsedStates="[]"
-                                        :frameAllowedFrozenStates="[]"
-                                        :onFocus="() => {}"/>
-                                    <FrameContainer
-                                        v-for="container in containerFrames"
-                                        :key="container.frameType.type + '-id:' + container.id"
-                                        :id="getFrameContainerUID(container.id)"
-                                        :ref="getFrameContainerUID(container.id)"
-                                        :frameId="container.id"
-                                        :containerLabel="container.frameType.labels[0].label"
-                                        :caretVisibility="container.caretVisibility"
-                                        :frameType="container.frameType"
-                                    />
+            /* IFTRUE_isPython
+            <Splitpanes class="expanded-PEA-splitter-overlay strype-split-theme" v-show="isExpandedPythonExecArea" horizontal @resize=onExpandedPythonExecAreaSplitPaneResize>
+                <pane key="1" :size="100 - expandedPEAOverlaySplitterPane2Size">
+                </pane>
+                <pane ref="overlayExpandedPEAPane2Ref" key="2" :size="expandedPEAOverlaySplitterPane2Size" :min-size="peaOverlayPane2MinSize" :max-size="peaOverlayPane2MaxSize">
+                </pane>
+            </Splitpanes>
+            FITRUE_isPython */
+            <!-- Keep the style position of the row div to get proper z order layout of the app -->
+            <div class="row" style="position: relative;">
+                <Splitpanes class="strype-split-theme" @resize=onStrypeCommandsSplitPaneResize>
+                    <Pane key="1" :size="100 - editorCommandsSplitterPane2Size" min-size="33" max-size="90">
+                        <!-- These data items are to enable testing: -->
+                        <div :id="editorId" :data-slot-focus-id="slotFocusId" :data-slot-cursor="slotCursorPos" class="print-full-height">
+                            <div class="top no-print">
+                                <MessageBanner 
+                                    v-if="showMessage"
+                                />
+                            </div>
+                            <div class="row no-gutters" >
+                                <Menu 
+                                    :id="menuUID" 
+                                    :ref="menuUID"
+                                    v-on:[CustomEventTypes.appShowProgressOverlay]="applyShowAppProgress"
+                                    v-on:[CustomEventTypes.appResetProject]="resetStrypeProject"
+                                    class="noselect no-print"
+                                />
+                                <div class="col">
+                                    <div 
+                                        :id="editorUID" 
+                                        :class="{'editor-code-div noselect print-full-height':true/* IFTRUE_isPython , 'full-height-editor-code-div':!isExpandedPythonExecArea, [scssVars.croppedEditorDivClassName]: isExpandedPythonExecArea FITRUE_isPython */}"
+                                        @mousedown="handleWholeEditorMouseDown"
+                                    >
+                                        <FrameHeader
+                                            :labels="projectDocLabels"
+                                            :frameId="-10"
+                                            :frameType="projectDocFrameType"
+                                            :isDisabled="false"
+                                            :frameAllowChildren="false"
+                                            :erroneous="false"
+                                            :wasLastRuntimeError="false"
+                                            :frameAllowedCollapsedStates="[]"
+                                            :frameAllowedFrozenStates="[]"
+                                            :onFocus="() => {}"/>
+                                        <FrameContainer
+                                            v-for="container in containerFrames"
+                                            :key="container.frameType.type + '-id:' + container.id"
+                                            :id="getFrameContainerUID(container.id)"
+                                            :ref="getFrameContainerUID(container.id)"
+                                            :frameId="container.id"
+                                            :containerLabel="container.frameType.labels[0].label"
+                                            :caretVisibility="container.caretVisibility"
+                                            :frameType="container.frameType"
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </Pane>
-                <Pane key="2" ref="editorCommandsSplitterPane2" :size="editorCommandsSplitterPane2Size" class="no-print">
-                    <Commands :id="commandsContainerId" class="noselect" :ref="strypeCommandsRefId" />
-                </Pane>
-            </SplitPanes>
-        </div>
-        <SimpleMsgModalDlg :dlgId="simpleMsgModalDlgId"/>
-        <ModalDlg :dlgId="importDiffVersionModalDlgId" :useYesNo="true">
-            <span v-t="'appMessage.editorFileUploadWrongVersion'" />                
-        </ModalDlg>
-        <ModalDlg :dlgId="resyncToCloudDriveAtStartupModalDlgId" :useYesNo="true" :okCustomTitle="$t('buttonLabel.yesSign')" :cancelCustomTitle="$t('buttonLabel.noContinueWithout')">
-            <span style="white-space:pre-wrap" v-html="resyncToCloudDriveAtStartupDetailsMessage"></span>
-        </ModalDlg>
-        <MediaPreviewPopup ref="mediaPreviewPopup" />
-        <EditImageDlg dlgId="editImageDlg" ref="editImageDlg" :imgToEdit="imgToEditInDialog" :showImgPreview="showImgPreview" />
-        <EditSoundDlg dlgId="editSoundDlg" ref="editSoundDlg" :soundToEdit="soundToEditInDialog" />
-        <div :id="getSkulptBackendTurtleDivId" class="hidden"></div>
-        <canvas v-show="appStore.isDraggingFrame" :id="getCompanionDndCanvasId" class="companion-canvas-dnd"/>
-        <ModalDlg :dlgId="confirmResetLSOnShareProjectLoadDlgId" :autoFocusButton="'ok'" :okCustomTitle="$t('buttonLabel.continue')" :cancelCustomTitle="$t('buttonLabel.cancelLoadSharedProject')" >
-            <div>
-                <span v-html="$t('appMessage.LSOnShareProjectLoad')"/>
-                <br/>
+                    </Pane>
+                    <Pane key="2" ref="editorCommandsSplitterPane2" :size="editorCommandsSplitterPane2Size" class="no-print">
+                        <Commands :id="commandsContainerId" class="noselect" :ref="strypeCommandsRefId" />
+                    </Pane>
+                </SplitPanes>
             </div>
-        </ModalDlg>
+            <SimpleMsgModalDlg :dlgId="simpleMsgModalDlgId"/>
+            <ModalDlg :dlgId="importDiffVersionModalDlgId" :useYesNo="true">
+                <span v-t="'appMessage.editorFileUploadWrongVersion'" />                
+            </ModalDlg>
+            <ModalDlg :dlgId="resyncToCloudDriveAtStartupModalDlgId" :useYesNo="true" :okCustomTitle="$t('buttonLabel.yesSign')" :cancelCustomTitle="$t('buttonLabel.noContinueWithout')">
+                <span style="white-space:pre-wrap" v-html="resyncToCloudDriveAtStartupDetailsMessage"></span>
+            </ModalDlg>
+            <MediaPreviewPopup ref="mediaPreviewPopup" />
+            <EditImageDlg dlgId="editImageDlg" ref="editImageDlg" :imgToEdit="imgToEditInDialog" :showImgPreview="showImgPreview" />
+            <EditSoundDlg dlgId="editSoundDlg" ref="editSoundDlg" :soundToEdit="soundToEditInDialog" />
+            <div :id="getSkulptBackendTurtleDivId" class="hidden"></div>
+            <canvas v-show="appStore.isDraggingFrame" :id="getCompanionDndCanvasId" class="companion-canvas-dnd"/>
+            <ModalDlg :dlgId="confirmResetLSOnShareProjectLoadDlgId" :autoFocusButton="'ok'" :okCustomTitle="$t('buttonLabel.continue')" :cancelCustomTitle="$t('buttonLabel.cancelLoadSharedProject')" >
+                <div>
+                    <span v-html="$t('appMessage.LSOnShareProjectLoad')"/>
+                    <br/>
+                </div>
+            </ModalDlg>
+        </div>
+        <div v-if="showLessonPanel"> <!-- This div is used to render any Step format besides the rightside integrated panel-->
+            <!-- 'showLessonPanel' determines whether a panel should be displayed, but the position
+                 is dependant on the type of panel that the current step is using. -->
+                <!-- TBC: editorCommandsSplitterPane2Size HAS STOPPED UPDATING? -->
+            
+             <!--
+            <div class="step-panel-editor-bottom" :style="{ width: (100 - editorCommandsSplitterPane2Size) + '%'}"> 
+                {{ editorCommandsSplitterPane2Size }}
+                {{ expandedPEAOverlaySplitterPane2Size }}
+                <LessonPanel />
+            </div>
+             -->
+             <!--
+            <div class="step-panel-editor-left-corner">
+                <LessonPanel />
+            </div>
+             -->
+            
+            <div class="step-panel-editor-bottom" :style="{ width: (100 - editorCommandsSplitterPane2Size) + '%'}"> 
+                <LessonPanel />
+            </div>
+        </div>
     </div>
 </template>
 
@@ -141,6 +165,7 @@ import axios from "axios";
 import scssVars from "@/assets/style/_export.module.scss";
 import {loadDivider} from "@/helpers/load-save";
 import FrameHeader from "@/components/FrameHeader.vue";
+import LessonPanel from "@/components/LessonPanel.vue";
 
 let autoSaveTimerId = -1;
 let projectSaveFunctionsState : ProjectSaveFunction[] = [];
@@ -164,6 +189,7 @@ export default Vue.extend({
         SimpleMsgModalDlg,
         Splitpanes,
         Pane,
+        LessonPanel,
     },
 
     data: function() {
@@ -181,6 +207,7 @@ export default Vue.extend({
             imgToEditInDialog: "",
             soundToEditInDialog: null as AudioBuffer | null,
             showImgPreview: (() => {}) as (dataURL: string) => void,
+            showLessonPanel: false, //local store of isRunningLesson to avoid issues with rendering prior to loading appStore
         };
     },
 
@@ -814,6 +841,9 @@ export default Vue.extend({
         // the UI should reflect it (showing the Turtle tab) so we look for Turtle in any case.
         actOnTurtleImport();
         /* FITRUE_isPython */
+
+        // In the case that a lesson is being run, update here and present the lesson display (WIP)
+        this.showLessonPanel = this.appStore?.isRunningLesson ?? false;
     },
 
     methods: {
@@ -1869,4 +1899,29 @@ $divider-grey: darken($background-grey, 15%);
 .strype-split-theme .splitpanes--horizontal>.splitpanes__splitter:after {
 	margin-top: 1px
 }
+
+// Panel fixed to the bottom of the editor splitpane
+.step-panel-editor-bottom {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    height: 165px;
+    z-index: 503; // above editor but below menu
+    border-top: 2px solid #333;
+}
+
+// Panel hovering in bottom left of screen
+.step-panel-editor-left-corner {
+    position: fixed;
+    bottom: 25px;
+    left: 25px;
+    width: 500px;
+    height: 200px;
+    border: 1px solid black;
+    border-radius: 12px;
+    overflow: hidden; // for round corners
+    box-shadow: 0px 0px 10px black;
+    z-index: 503; // above editor but below menu
+}
+
 </style>

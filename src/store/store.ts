@@ -238,6 +238,11 @@ export const useStore = defineStore("app", {
             DAPWrapper: {} as DAPWrapper,
 
             previousDAPWrapper: {} as DAPWrapper,
+
+            // -- STORE VALUES FOR INTEGRATED LESSONS --
+            isCurrentlyRunningLesson: true, //false, //TEMP TRUE FOR TESTING
+
+            currentStepIndex: 0, // Lessons are built off multiple steps - this stores the current step to be displayed on screen
         };
     },
 
@@ -716,6 +721,12 @@ export const useStore = defineStore("app", {
 
         isContainerCollapsed: (state) => (frameId: number) => {
             return (state.frameObjects[frameId].collapsedState ?? CollapsedState.FULLY_VISIBLE) != CollapsedState.FULLY_VISIBLE;
+        },
+
+        // -- GETTERS FOR INTEGRATED LESSONS --
+
+        isRunningLesson: (state) => {
+            return state.isCurrentlyRunningLesson;
         },
     },
     
@@ -3122,6 +3133,12 @@ export const useStore = defineStore("app", {
                 this.forceExpand(this.frameObjects[frameId].parentId);
             }
         },
+
+        // -- ACTIONS RELATED TO LESSONS --
+        setIsRunningLessonStatus(isRunning: boolean) {
+            this.isCurrentlyRunningLesson = isRunning;
+        },
+
     },
 });
 

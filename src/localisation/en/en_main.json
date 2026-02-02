@@ -197,6 +197,7 @@
     "downloadPython": "Convert to Python file",
     "loadProject": "Open...",
     "loadDemoProject": "Examples...",
+    "loadLesson": "Lessons...",
     "saveProject": "Save",
     "saveAsProject": "Save as...",
     "resetProject": "New project",
