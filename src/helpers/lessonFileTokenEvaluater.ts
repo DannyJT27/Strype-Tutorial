@@ -96,10 +96,26 @@ export function evaluateTextToken(token: string, currentNestLevels: LessonParseN
     // Some constants that affect multiple parts of the parser, in case they need to be tweaked
     //const MAX_TEXT_LENGTH = 250; <- varies with pop-up type
     const MAX_TITLE_LENGTH = 100; // Maximum amount of characters for the Lesson title.
+    const MAX_DESCRIPTION_LENGTH = 400; // Maximum amount of characters for the Lesson description.
 
     // -- TEXT TOKEN HANDLING --
 
     // nest level "#" (comments) is handled in Silent Return cases
+
+    ////////////////////////\\\\\\\\\\\\\\\\\\\\\\\\
+    if(context.thisNest.nestLevel == "description") { 
+        context.docText = "Lesson Description";
+        context.docLink = "TBC DOCUMENTATION";
+
+        // [u] Title isn't too long
+        if(token.length > MAX_DESCRIPTION_LENGTH) {
+            parseResult.warnings.push(newDebugMessage("Lesson Description shortened due to exceeding the character limit of " + MAX_DESCRIPTION_LENGTH + ".", context, 0, "", ""));
+        }
+
+        parseResult.details.title = token.slice(0, MAX_DESCRIPTION_LENGTH); //.slice to enforce character limit
+        context.thisNest.contents.push("valid_token"); // Indicator that there is a valid text token within this nest
+        return;
+    }
 
     ////////////////////////\\\\\\\\\\\\\\\\\\\\\\\\
     if(context.thisNest.nestLevel == "text") { 
@@ -295,32 +311,32 @@ export function evaluateTagToken(token: string, currentNestLevels: LessonParseNe
             }
 
             if(CONTINUE_FROM_INVALID_LOCATIONS_FOR_TEXT_SECTIONS) {
-                parseResult.warnings.push(newDebugMessage("Invalid positioning for Title tag: " + token + ". The Lesson's Title should be specified within the <metadata> section. This section will be ignored.", context, 0));
+                parseResult.warnings.push(newDebugMessage("Invalid positioning for Description tag: " + token + ". The Lesson's Description should be specified within the <metadata> section. This section will be ignored.", context, 0));
             }
             else {
-                parseResult.warnings.push(newDebugMessage("Invalid positioning for Title tag: " + token + ". The Lesson's Title should be specified within the <metadata> section. This tag will be ignored.", context, 0));
+                parseResult.warnings.push(newDebugMessage("Invalid positioning for Description tag: " + token + ". The Lesson's Description should be specified within the <metadata> section. This tag will be ignored.", context, 0));
                 return;
             }
         }
 
         // Arguments Requirment: no args with special informative message
-        tagToken_noArgsGeneric(context, parseResult, "Unnecessary arguments found within tag: <" + context.tokenArgs.join(" ") + ">. The Lesson Title is specified as a text section, not within tag arguments. These arguments will be ignored.");
+        tagToken_noArgsGeneric(context, parseResult, "Unnecessary arguments found within tag: <" + context.tokenArgs.join(" ") + ">. These arguments will be ignored.");
     
         // [u] Check for whether title has already been modified (can't use normal nest.contents method due to potentially multiple metadata sections + non-nested titles)
-        if(parseResult.details.title != "PLACEHOLDER     TEXT") {
-            parseResult.ERRORS.push(newDebugMessage("FATAL - Multiple Title sections detected. Please ensure the Lesson File only contains one <title> tag.", context, 0));
+        if(parseResult.details.description != "PLACEHOLDER     TEXT") {
+            parseResult.ERRORS.push(newDebugMessage("FATAL - Multiple Description sections detected. Please ensure the Lesson File only contains one <description> tag.", context, 0));
             parseResult.success = false;
             return;
         }
 
-        context.thisNest.contents.push("title"); // Add attributes to the parent nest
-        currentNestLevels.push({nestLevel: "title", contents: []}); // Only needs to add nest level, evaluateTextToken() handles the rest
+        context.thisNest.contents.push("description"); // Add attributes to the parent nest
+        currentNestLevels.push({nestLevel: "description", contents: []}); // Only needs to add nest level, evaluateTextToken() handles the rest
         return;
     }
 
     ////////////////////////\\\\\\\\\\\\\\\\\\\\\\\\
-    if(context.tokenArgs[0] == "/title") { 
-        context.docText = "Lesson Title";
+    if(context.tokenArgs[0] == "/description") { 
+        context.docText = "Lesson Description";
         context.docLink = "TBC DOCUMENTATION";
 
         // Basic nest level and args requirements for closing tags
@@ -337,7 +353,6 @@ export function evaluateTagToken(token: string, currentNestLevels: LessonParseNe
         currentNestLevels.pop(); // Remove nestLevel
         return;
     }
-
 
     ////////////////////////\\\\\\\\\\\\\\\\\\\\\\\\
     // Lesson metadata section for details about the Lesson, such as its title and description
