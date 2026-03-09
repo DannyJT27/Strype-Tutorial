@@ -75,6 +75,13 @@
                                 </div>
                             </div>
                         </div>
+                        <!-- 'showLessonPanel' determines whether a panel should be displayed, but the position
+                            is dependant on the type of panel that the current step is using. -->
+                        <div v-if="showLessonPanel && !isStepPanelTypeFullscreenFocus" class="step-panel-editor-sizing-wrapper">
+                            <div :class="getStepPanelTypeClass"> 
+                                <LessonPanel />
+                            </div>
+                        </div>
                     </Pane>
                     <Pane key="2" ref="editorCommandsSplitterPane2" :size="editorCommandsSplitterPane2Size" class="no-print">
                         <Commands :id="commandsContainerId" class="noselect" :ref="strypeCommandsRefId" />
@@ -100,25 +107,10 @@
                 </div>
             </ModalDlg>
         </div>
-        <div v-if="showLessonPanel"> <!-- This div is used to render any Step format besides the rightside integrated panel-->
-            <!-- 'showLessonPanel' determines whether a panel should be displayed, but the position
-                 is dependant on the type of panel that the current step is using. -->
-                <!-- TBC: editorCommandsSplitterPane2Size HAS STOPPED UPDATING? -->
-            
-             <!--
-            <div class="step-panel-editor-bottom" :style="{ width: (100 - editorCommandsSplitterPane2Size) + '%'}"> 
-                {{ editorCommandsSplitterPane2Size }}
-                {{ expandedPEAOverlaySplitterPane2Size }}
-                <LessonPanel />
-            </div>
-             -->
-             <!--
-            <div class="step-panel-editor-left-corner">
-                <LessonPanel />
-            </div>
-             -->
-            
-            <div class="step-panel-editor-bottom" :style="{ width: (100 - editorCommandsSplitterPane2Size) + '%'}"> 
+        <!-- TBC: Condition here VVV -->
+        <div v-if="showLessonPanel && isStepPanelTypeFullscreenFocus"> <!-- Central Step Panel that dims the background for focus -->
+            <div class="lesson-darkened-background-full" />
+            <div class="step-panel-editor-centre-highlighted">
                 <LessonPanel />
             </div>
         </div>
@@ -139,7 +131,7 @@ import ModalDlg from "@/components/ModalDlg.vue";
 import SimpleMsgModalDlg from "@/components/SimpleMsgModalDlg.vue";
 import {Splitpanes, Pane, PaneData} from "splitpanes";
 import { useStore, settingsStore } from "@/store/store";
-import { AppEvent, ProjectSaveFunction, BaseSlot, CaretPosition, FrameObject, FrozenState, MessageTypes, ModifierKeyCode, Position, PythonExecRunningState, SaveRequestReason, SlotCursorInfos, SlotsStructure, SlotType, StringSlot, StrypeSyncTarget, StrypePEALayoutMode, defaultEmptyStrypeLayoutDividerSettings, EditImageInDialogFunction, EditSoundInDialogFunction, areSlotCoreInfosEqual, SlotCoreInfos, ProjectDocumentationDefinition } from "@/types/types";
+import { AppEvent, ProjectSaveFunction, BaseSlot, CaretPosition, FrameObject, FrozenState, MessageTypes, ModifierKeyCode, Position, PythonExecRunningState, SaveRequestReason, SlotCursorInfos, SlotsStructure, SlotType, StringSlot, StrypeSyncTarget, StrypePEALayoutMode, defaultEmptyStrypeLayoutDividerSettings, EditImageInDialogFunction, EditSoundInDialogFunction, areSlotCoreInfosEqual, SlotCoreInfos, ProjectDocumentationDefinition, LessonStepAttributes, StepPanelType} from "@/types/types";
 import { CloudDriveAPIState, isSyncTargetCloudDrive } from "@/types/cloud-drive-types";
 import { getFrameContainerUID, getCloudDriveHandlerComponentRefId, getMenuLeftPaneUID, getEditorMiddleUID, getCommandsRightPaneContainerId, isElementLabelSlotInput, CustomEventTypes, getFrameUID, parseLabelSlotUID, getLabelSlotUID, getFrameLabelSlotsStructureUID, getSelectionCursorsComparisonValue, setDocumentSelection, getSameLevelAncestorIndex, autoSaveFreqMins, getImportDiffVersionModalDlgId, getAppSimpleMsgDlgId, getFrameContextMenuUID, getActiveContextMenu, actOnTurtleImport, setPythonExecutionAreaTabsContentMaxHeight, setManuallyResizedEditorHeightFlag, setPythonExecAreaLayoutButtonPos, isContextMenuItemSelected, getStrypeCommandComponentRefId, frameContextMenuShortcuts, getCompanionDndCanvasId, addDuplicateActionOnFramesDnD, removeDuplicateActionOnFramesDnD, getFrameComponent, getCaretContainerComponent, sharedStrypeProjectTargetKey, sharedStrypeProjectIdKey, getCaretContainerUID, getEditorID, getLoadProjectLinkId, AutoSaveKeyNames } from "./helpers/editor";
 import { AllFrameTypesIdentifier} from "@/types/types";
@@ -196,6 +188,7 @@ export default Vue.extend({
         return {
             CustomEventTypes, // just for using in template
             scssVars, // just for using in template
+            StepPanelType, // just for using in template
             showAppProgress: false,
             setAppNotOnTop: false,
             progressbarMessage: "",
@@ -208,6 +201,26 @@ export default Vue.extend({
             soundToEditInDialog: null as AudioBuffer | null,
             showImgPreview: (() => {}) as (dataURL: string) => void,
             showLessonPanel: false, //local store of isRunningLesson to avoid issues with rendering prior to loading appStore
+
+            //TEMP TEST STEP PANELS
+            testStep1: {
+                stepRef: "debugStep1",
+                panelType: StepPanelType.RIGHT_POPUP,
+                textContent: "Hello World.",
+                colourTheme: "Red",
+            } as LessonStepAttributes,
+            testStep2: {
+                stepRef: "debugStep2",
+                panelType: StepPanelType.LEFT_POPUP,
+                textContent: "Hello World again.",
+                colourTheme: "Green",
+            } as LessonStepAttributes,
+            testStep3: {
+                stepRef: "debugStep3",
+                panelType: StepPanelType.FULLSCREEN_FOCUS_MODAL,
+                textContent: "Hello World (loud).",
+                colourTheme: "Blue",
+            } as LessonStepAttributes,
         };
     },
 
@@ -350,6 +363,23 @@ export default Vue.extend({
 
         getCompanionDndCanvasId(): string {
             return getCompanionDndCanvasId();
+        },
+
+        getStepPanelTypeClass(): string {
+            //Mapping of each ENUM PanelType to its respective CSS class
+            const panelClassMap: Record<StepPanelType, string> = {
+                [StepPanelType.LEFT_POPUP]: "step-panel-editor-left-corner",
+                [StepPanelType.RIGHT_POPUP]: "step-panel-editor-right-corner",
+                [StepPanelType.BOTTOM_WIDTH]: "step-panel-editor-bottom",
+                [StepPanelType.FULLSCREEN_FOCUS_MODAL]: "", //This type is rendered in a seperate div, and is therefore not handled here.
+            };
+
+            return panelClassMap[this.appStore.getCurrentStepAttributes.panelType] ?? "";
+        },
+
+        //Panel type that is rendered in its own div
+        isStepPanelTypeFullscreenFocus(): boolean {
+            return this.appStore.getCurrentStepAttributes.panelType == StepPanelType.FULLSCREEN_FOCUS_MODAL;
         },
     },
 
@@ -1900,28 +1930,77 @@ $divider-grey: darken($background-grey, 15%);
 	margin-top: 1px
 }
 
+// Full size of pane to give relative positioning for step panels
+.step-panel-editor-sizing-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
 // Panel fixed to the bottom of the editor splitpane
 .step-panel-editor-bottom {
-    position: fixed;
+    position: absolute; //keeps width of pane
+    z-index: 503; // above editor but below menu
     bottom: 0;
     left: 0;
-    height: 165px;
-    z-index: 503; // above editor but below menu
+    height: 160px;
+    width: 100%;
     border-top: 2px solid #333;
 }
 
-// Panel hovering in bottom left of screen
+// Panel hovering in corner. Can be in the bottom left, bottom right, and top right.
 .step-panel-editor-left-corner {
-    position: fixed;
-    bottom: 25px;
-    left: 25px;
+    position: absolute; //stays in place
+    z-index: 503; // above editor but below menu
     width: 500px;
     height: 200px;
     border: 1px solid black;
     border-radius: 12px;
     overflow: hidden; // for round corners
     box-shadow: 0px 0px 10px black;
+    bottom: 25px;
+    left: 25px;
+}
+
+// Panel hovering in corner. Can be in the bottom left, bottom right, and top right.
+.step-panel-editor-right-corner {
+    position: absolute; //stays in place
     z-index: 503; // above editor but below menu
+    width: 500px;
+    height: 200px;
+    border: 1px solid black;
+    border-radius: 12px;
+    overflow: hidden; // for round corners
+    box-shadow: 0px 0px 10px black;
+    bottom: 25px;
+    right: 25px;
+}
+
+// Panel hovering in centre of screen with darkened background
+.step-panel-editor-centre-highlighted {
+    position: fixed;
+    z-index: 10001; //above the dimmed background
+    top: 50%; //centred
+    left: 50%; //centred
+    transform: translate(-50%, -50%); //centred
+    width: 700px;
+    height: 250px;
+    border: 1px solid black;
+    border-radius: 12px;
+    overflow: hidden; // for round corners
+    box-shadow: 0px 0px 5px black;
+}
+
+// Darkened background (full)
+.lesson-darkened-background-full {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw; // full screen
+    height: 100vh; // full screen
+    background: black;
+    opacity: 50%;
+    z-index: 10000; // covers everything - use with care
 }
 
 </style>

@@ -1255,3 +1255,74 @@ export interface MediaDataAndDim {
 export type EditImageInDialogFunction = (imageDataURL: string, showPreview: (dataURL: string) => void, callback: (replacement: { code: string, mediaType: string }) => void) => void;
 export type EditSoundInDialogFunction = (sound: AudioBuffer, callback: (replacement: { code: string, mediaType: string }) => void) => void;
 
+// All editable aspects of a singular lesson step (TBC: will have more added during dev of markup language)
+export interface LessonStepAttributes {
+    stepRef: string; // Steps are user-defined as <step "stepRef">. Used to pinpoint problems in error messages e.g. 'Step "stepRef" has no text content.'
+
+    // Attributes
+    panelType: StepPanelType; // Required as no value here means the step panel is not displayed at all.
+    textContent?: string;
+} 
+
+// All panel types stored here
+export enum StepPanelType {
+    LEFT_POPUP = "LEFT_POPUP",
+    RIGHT_POPUP = "RIGHT_POPUP",
+    BOTTOM_WIDTH = "BOTTOM_WIDTH",
+    FULLSCREEN_FOCUS_MODAL = "FULLSCREEN_FOCUS_MODAL",
+}
+
+export interface LessonMetadata { 
+    title: string;
+    description: string;
+    initialFileUrl?: string; // Only needed if specified in Lesson File
+    //optional stats to show beforehand
+    difficulty?: string;
+    difficultyColour?: string;
+    estimatedTime?: string;
+}
+
+// Interface for generating Warnings and Errors when parsing lesson files (see lessonFileParser.ts)
+export interface LessonParseErrorMessage {
+    errorMessageContent: string;
+
+    // sectionRef stores the stepRef or other section where the error is located.
+    sectionRef?: string; // Not required - no sectionRef means it is a problem with the entire file.
+
+    // Helpful documentation link (only when relevant)
+    documentationText?: string; // Display text
+    documentationLink?: string; // Link to the respective page in the Lesson File Documentation
+}
+
+// Interface for returning parsed lesson files
+export interface LessonParseResult {
+    success: boolean; //sets to false if the parser needs to terminate early
+
+    //actual lesson details
+    steps: LessonStepAttributes[]; // Unsuccessful results will return an empty array []
+    details: LessonMetadata;
+
+    //debug messages
+    suggestions: LessonParseErrorMessage[];
+    warnings: LessonParseErrorMessage[]; // Successful, perfect results will return an empty array []
+    ERRORS: LessonParseErrorMessage[]; // Successful results will return an empty array [] (all caps for better distinguishability from warnings)
+}
+
+// Context object for tag token evaluation methods (previous method implementation had 9+ parameter functions which is not good)
+export interface LessonParseTokenContext {
+    tokenArgs: string[];
+    thisNest: LessonParseNestSection;
+    rootNest: LessonParseNestSection;
+    stepRef: string;
+    lineNum: number;
+    docText: string;
+    docLink: string;
+}
+
+// Interface for the parser to keep track of the current section being read and what subsections/attributes are inside it
+export interface LessonParseNestSection {
+    nestLevel: string;
+    contents: string[]; // Not optional, just initialize as empty
+}
+
+//tbc requirement type, hint type containing requirement type

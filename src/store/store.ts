@@ -1,5 +1,5 @@
 import Vue from "vue";
-import { FrameObject, CollapsedState, CurrentFrame, CaretPosition, FrozenState, MessageDefinitions, ObjectPropertyDiff, AddFrameCommandDef, EditorFrameObjects, MainFramesContainerDefinition, DefsContainerDefinition, StateAppObject, UserDefinedElement, ImportsContainerDefinition, EditableFocusPayload, SlotInfos, FramesDefinitions, EmptyFrameObject, NavigationPosition, FormattedMessage, FormattedMessageArgKeyValuePlaceholders, generateAllFrameDefinitionTypes, AllFrameTypesIdentifier, BaseSlot, SlotType, SlotCoreInfos, SlotsStructure, LabelSlotsContent, FieldSlot, SlotCursorInfos, StringSlot, areSlotCoreInfosEqual, StrypeSyncTarget, ProjectLocation, MessageDefinition, PythonExecRunningState, AddShorthandFrameCommandDef, isFieldBaseSlot, StrypePEALayoutMode, SaveRequestReason, RootContainerFrameDefinition, StrypeLayoutDividerSettings, MediaSlot, SlotInfosOptionalMedia, ModifierKeyCode } from "@/types/types";
+import { FrameObject, CollapsedState, CurrentFrame, CaretPosition, FrozenState, MessageDefinitions, ObjectPropertyDiff, AddFrameCommandDef, EditorFrameObjects, MainFramesContainerDefinition, DefsContainerDefinition, StateAppObject, UserDefinedElement, ImportsContainerDefinition, EditableFocusPayload, SlotInfos, FramesDefinitions, EmptyFrameObject, NavigationPosition, FormattedMessage, FormattedMessageArgKeyValuePlaceholders, generateAllFrameDefinitionTypes, AllFrameTypesIdentifier, BaseSlot, SlotType, SlotCoreInfos, SlotsStructure, LabelSlotsContent, FieldSlot, SlotCursorInfos, StringSlot, areSlotCoreInfosEqual, StrypeSyncTarget, ProjectLocation, MessageDefinition, PythonExecRunningState, AddShorthandFrameCommandDef, isFieldBaseSlot, StrypePEALayoutMode, SaveRequestReason, RootContainerFrameDefinition, StrypeLayoutDividerSettings, MediaSlot, SlotInfosOptionalMedia, ModifierKeyCode, LessonStepAttributes, StepPanelType } from "@/types/types";
 import { getObjectPropertiesDifferences, getSHA1HashForObject } from "@/helpers/common";
 import i18n from "@/i18n";
 import {calculateNextCollapseState, checkCodeErrors, checkStateDataIntegrity, cloneFrameAndChildren, evaluateSlotType, generateFlatSlotBases, getAllChildrenAndJointFramesIds, getAvailableNavigationPositions, getFlatNeighbourFieldSlotInfos, getFrameSectionIdFromFrameId, getParentOrJointParent, getSlotDefFromInfos, getSlotIdFromParentIdAndIndexSplit, getSlotParentIdAndIndexSplit, isContainedInFrame, isFramePartOfJointStructure, removeFrameInFrameList, restoreSavedStateFrameTypes, retrieveSlotByPredicate, retrieveSlotFromSlotInfos} from "@/helpers/storeMethods";
@@ -240,9 +240,19 @@ export const useStore = defineStore("app", {
             previousDAPWrapper: {} as DAPWrapper,
 
             // -- STORE VALUES FOR INTEGRATED LESSONS --
-            isCurrentlyRunningLesson: true, //false, //TEMP TRUE FOR TESTING
+            isCurrentlyRunningLesson: true, //false, //TBC: TEMP TRUE FOR TESTING
 
-            currentStepIndex: 0, // Lessons are built off multiple steps - this stores the current step to be displayed on screen
+            currentLessonSteps: [] as LessonStepAttributes[],
+
+            currentLessonStepIndex: 0, // Lessons are built off multiple steps - this stores the current step to be displayed on screen
+
+            unlockedLessonStepIndex: 0, // Stores the highest step reached in this session, used for jumping steps through the progress bar
+
+            defaultLessonStep: { // Used to ensure getters do not return UNDEFINED when expecting a LessonStepAttributes
+                stepRef: "errorDisplayingStep",
+                panelType: StepPanelType.RIGHT_POPUP,
+                textContent: "ERROR LOADING STEP DETAILS - CHECK CONSOLE FOR MORE INFORMATION",
+            } as LessonStepAttributes,
         };
     },
 
@@ -727,6 +737,38 @@ export const useStore = defineStore("app", {
 
         isRunningLesson: (state) => {
             return state.isCurrentlyRunningLesson;
+        },
+
+        getCurrentLessonStepIndex: (state) => {
+            return state.currentLessonStepIndex;
+        },
+
+        getUnlockedLessonStepIndex: (state) => {
+            return state.unlockedLessonStepIndex;
+        },
+
+        isLessonOnFirstStep: (state) => {
+            return state.currentLessonStepIndex == 0;
+        },
+
+        isLessonOnLastStep: (state) => {
+            return state.currentLessonStepIndex == state.currentLessonSteps.length - 1;
+        },
+
+        // Steps besides the currently displayed one do not need to be accessed.
+        // To change the displayed step, modify currentLessonStepIndex and then call this method again.
+        getCurrentStepAttributes: (state) => {
+            if(state.currentLessonSteps.length > 0) {
+                return state.currentLessonSteps[state.currentLessonStepIndex];
+            } 
+            else {
+                console.error("Lesson Error: Tried to read non-existent step. Target Index: " + state.currentLessonStepIndex + ", Total Steps: " + state.currentLessonSteps.length); //debug
+                return state.defaultLessonStep; // Returns dummy info instead of Undefined
+            }
+        },
+
+        getTotalLessonSteps: (state) => {
+            return state.currentLessonSteps.length;
         },
     },
     
@@ -3135,8 +3177,60 @@ export const useStore = defineStore("app", {
         },
 
         // -- ACTIONS RELATED TO LESSONS --
+
         setIsRunningLessonStatus(isRunning: boolean) {
             this.isCurrentlyRunningLesson = isRunning;
+        },
+
+        // Modifying currentLessonStepIndex. Note that none of these functions update the displayed step, just the index.
+
+        lessonIncStepIndex() {
+            if(!this.isLessonOnLastStep) {
+                this.currentLessonStepIndex++;
+
+                // Update unlocked steps if needed
+                if(!(this.unlockedLessonStepIndex >= this.currentLessonStepIndex)) {
+                    this.unlockedLessonStepIndex = this.currentLessonStepIndex;
+                }
+            }
+            // ...else do nothing. Should not loop around at the last step, and therefore will not be called anyway.
+        },
+
+        lessonDecStepIndex() {
+            if(!this.isLessonOnFirstStep) {
+                this.currentLessonStepIndex--;
+            }
+            // ...else do nothing. Same reasoning as above.
+        },
+
+        lessonSetStepIndex(targetIndex: number) {
+            // Check that the index is within the bounds of the steps array
+            if(targetIndex < 0 || targetIndex >= this.currentLessonSteps.length) {
+                console.error("Lesson Error: Tried to jump to invalid step index. Target: " + targetIndex + ", Total Steps: " + this.currentLessonSteps.length); //debug
+            } 
+            else {
+                this.currentLessonStepIndex = targetIndex;
+
+                // Note that jumping to a locked step should never really happen, but it's here just in case.
+                if(this.unlockedLessonStepIndex < this.currentLessonStepIndex) {
+                    this.unlockedLessonStepIndex = this.currentLessonStepIndex;
+                }
+            }
+        },
+
+        lessonResetStepIndexes() {
+            this.currentLessonStepIndex = 0; // Setting unlocked indexes to 0 without also resetting currentLessonStepIndex will cause logic issues
+            this.unlockedLessonStepIndex = 0;
+        },
+
+        // Modifying currentLessonSteps.
+
+        clearLessonStepsArray() {
+            this.currentLessonSteps = [];
+        },
+
+        setLessonStepsArray(steps: LessonStepAttributes[]) {
+            this.currentLessonSteps = steps; // Takes a full list of steps at once.
         },
 
     },
