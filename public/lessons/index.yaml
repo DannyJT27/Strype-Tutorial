@@ -1,0 +1,9 @@
+- title: Test Lesson 1
+  description: This is the first test lesson, containing 5 steps and some other details.
+  totalSteps: 5
+  file: testlesson.txt
+
+- title: Test Lesson 2
+  description: This is the second test lesson, containing 2 steps.
+  totalSteps: 2
+  file: testlesson2.txt

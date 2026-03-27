@@ -1,7 +1,8 @@
 <!-- this acts as a wrapper around the bootstrap modals, to have centralised control and customisation -->
 <template>
     <b-modal no-close-on-backdrop :hide-header-close="!showCloseBtn" :id="dlgId" :title="dlgTitle" :ok-only="okOnly" 
-        :ok-title="okTitle" :ok-disabled="okDisabled" :cancel-title="cancelTitle" :size="size" :auto-focus-button="autoFocusButton" :modal-class="cssClass">
+        :ok-title="okTitle" :ok-disabled="okDisabled" :cancel-title="cancelTitle" :size="size" :auto-focus-button="autoFocusButton" 
+        :modal-class="cssClass" @shown="$emit('shown')" @hidden="$emit('hidden')">
         <slot/>
         <!-- if we use a loading OK, we assume ONLY the OK button is customised and use the default cancel/hide buttons of the modal -->
         <template v-if="useLoadingOK" #modal-ok>

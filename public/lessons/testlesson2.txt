@@ -1,0 +1,29 @@
+<metadata>
+    <title>
+        Test Lesson 1
+    </title>
+    <description>
+        This is the first test lesson, containing 5 steps and some other details.
+    </description>
+<metadata>
+
+<default>
+    <attributes>
+        <panel-type bar>
+    </attributes>
+</default>
+
+<step Step1>
+    <text>
+        Welcome to the second test lesson. This only has 2 steps.
+    </text>
+    <attributes>
+        <panel-type central-focus>
+    </attributes>
+</step>
+
+<step Step5>
+    <text>
+        Thanks for reading.
+    </text>
+<step>

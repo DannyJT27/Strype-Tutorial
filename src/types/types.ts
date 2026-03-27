@@ -1255,14 +1255,55 @@ export interface MediaDataAndDim {
 export type EditImageInDialogFunction = (imageDataURL: string, showPreview: (dataURL: string) => void, callback: (replacement: { code: string, mediaType: string }) => void) => void;
 export type EditSoundInDialogFunction = (sound: AudioBuffer, callback: (replacement: { code: string, mediaType: string }) => void) => void;
 
+// Overall Lesson interface for stored lessons, including the metadata to display in the list of lessons to load.
+export interface Lesson { 
+    details: LessonMetadata,
+    sourceLines: string[], 
+    // Note that it only stores the source lines rather than a parsed list of steps, as this is far more memory efficient. 
+    // Users running the lesson will need it to be parsed, which should be very fast anyway due to size limits for lesson files
+}
+
 // All editable aspects of a singular lesson step (TBC: will have more added during dev of markup language)
-export interface LessonStepAttributes {
+// All attributes (except panelType) are optional to reduce memory load. As such, implementations for them need to account for default values when the attribute is undefined.
+export interface LessonStepDetails {
     stepRef: string; // Steps are user-defined as <step "stepRef">. Used to pinpoint problems in error messages e.g. 'Step "stepRef" has no text content.'
+    sourceLineNum?: number; // Used for Test Mode's Debug Panel
+
+    // Main features
+    textContent: string;
+    hints: LessonHint[]; // Required, init as empty
+    requirements: LessonRequirement[]; // Required, init as empty
 
     // Attributes
-    panelType: StepPanelType; // Required as no value here means the step panel is not displayed at all.
-    textContent?: string;
+    panelType: StepPanelType; // ! Required as no value here means the step panel is not displayed at all.
+    colourScheme?: string;
+    hideRequirementExpectedValues?: boolean; // See lessonRequirementHandler.ts -> requirementMessage()
 } 
+
+export interface LessonRequirement {
+    reqType: StepRequirementType;
+    needed: boolean; // If true, requirement is always needed (for cases where only x amount of requirements needs to be fulfilled)
+    numValue?: number; // Use case varies with reqType
+    textValue?: string; // Use case varies with reqType
+}
+
+export interface LessonHint {
+    message: string;
+    requirements: LessonRequirement[]; // Required, init as empty
+}
+
+// Write enum values in alphabetical order for consistency with the parser
+export enum StepRequirementType {
+    CHANGES_MADE = "changes-made", // Any change to the editor since opening this step [TBC IMPLEMENTATION]
+    CONSOLE_OUTPUT = "console-output", // After running their code, the console has outputted a line that matches 'textValue' [TBC IMPLEMENTATION]
+    FAILED_ATTEMPTS = "failed-attempts", // Student has failed to progress at least 'numValue' times (only used for hints)
+    NO_ERRORS = "no-errors", // Code has no errors at all [TBC IMPLEMENTATION]
+    PYTHON_PRESENT = "python-present", // Student has a code segement matching 'textValue' [TBC IMPLEMENTATION]
+    PYTHON_NOT_PRESENT = "python-not-present", // Student DOES NOT have a code segement matching 'textValue' [TBC IMPLEMENTATION]
+    RUN_CODE = "run-code", // Student has run their code since opening this step
+    TIME_PASSED = "time-passed", // At least 'numValue' seconds have passed 
+    //...
+}
 
 // All panel types stored here
 export enum StepPanelType {
@@ -1275,6 +1316,7 @@ export enum StepPanelType {
 export interface LessonMetadata { 
     title: string;
     description: string;
+    totalSteps: number;
     initialFileUrl?: string; // Only needed if specified in Lesson File
     //optional stats to show beforehand
     difficulty?: string;
@@ -1299,7 +1341,7 @@ export interface LessonParseResult {
     success: boolean; //sets to false if the parser needs to terminate early
 
     //actual lesson details
-    steps: LessonStepAttributes[]; // Unsuccessful results will return an empty array []
+    steps: LessonStepDetails[]; // Unsuccessful results will return an empty array []
     details: LessonMetadata;
 
     //debug messages
@@ -1308,21 +1350,10 @@ export interface LessonParseResult {
     ERRORS: LessonParseErrorMessage[]; // Successful results will return an empty array [] (all caps for better distinguishability from warnings)
 }
 
-// Context object for tag token evaluation methods (previous method implementation had 9+ parameter functions which is not good)
-export interface LessonParseTokenContext {
-    tokenArgs: string[];
-    thisNest: LessonParseNestSection;
-    rootNest: LessonParseNestSection;
-    stepRef: string;
-    lineNum: number;
-    docText: string;
-    docLink: string;
-}
-
 // Interface for the parser to keep track of the current section being read and what subsections/attributes are inside it
 export interface LessonParseNestSection {
     nestLevel: string;
-    contents: string[]; // Not optional, just initialize as empty
+    contents: string[]; // Not optional, initialize as empty
 }
 
 //tbc requirement type, hint type containing requirement type

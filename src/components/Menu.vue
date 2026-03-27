@@ -89,7 +89,8 @@
             <div class="menu-separator-div"></div>           
             <a v-show="showMenu" :class="'strype-menu-link ' + scssVars.strypeMenuItemClassName" @click="openLoadDemoProjectModal">{{$t('appMenu.loadDemoProject')}}</a>
             <OpenDemoDlg ref="openDemoDlg" :dlg-id="loadDemoProjectModalDlgId"/>
-            <a v-show="showMenu" :class="'strype-menu-link ' + scssVars.strypeMenuItemClassName" >{{$t('appMenu.loadLesson')}}</a>
+            <a v-show="showMenu" :class="'strype-menu-link ' + scssVars.strypeMenuItemClassName" @click="openLoadLessonModal">{{$t('appMenu.loadLesson')}}</a>
+            <OpenLessonDlg ref="openLessonDlg" :dlg-id="loadLessonModalDlgId"/>
             /* IFTRUE_isPython
             <a v-show="showMenu" :class="'strype-menu-link ' + scssVars.strypeMenuItemClassName" @click="openLibraryDoc">{{$t('appMenu.apiDocumentation')}}</a>
                FITRUE_isPython */
@@ -224,6 +225,7 @@ import { getAboveFrameCaretPosition, getFrameSectionIdFromFrameId } from "@/help
 import { getLocaleBuildDate } from "@/main";
 import scssVars from "@/assets/style/_export.module.scss";
 import OpenDemoDlg from "@/components/OpenDemoDlg.vue";
+import OpenLessonDlg from "@/components/OpenLessonDlg.vue";
 import { CloudFileSharingStatus, isSyncTargetCloudDrive } from "@/types/cloud-drive-types";
 
 //////////////////////
@@ -235,6 +237,7 @@ export default Vue.extend({
 
     components: {
         OpenDemoDlg,
+        OpenLessonDlg,
         Slide,
         CloudDriveHandler,
         ModalDlg,
@@ -416,6 +419,10 @@ export default Vue.extend({
 
         loadDemoProjectModalDlgId(): string {
             return "load-strype-demo-project-modal-dlg";
+        },
+
+        loadLessonModalDlgId(): string {
+            return "load-strype-lesson-modal-dlg";
         },
 
         loadProjectTargetButtonGpId(): string {
@@ -654,6 +661,20 @@ export default Vue.extend({
                 this.$root.$emit("bv::show::modal", this.loadDemoProjectModalDlgId);
             }
         },
+
+        openLoadLessonModal(): void {
+            (this.$refs.openLessonDlg as InstanceType<typeof OpenLessonDlg>).updateAvailableLessons();
+            // Logic here is exactly the same as openLoadDemoProjectModal()
+
+            if(this.appStore.isEditorContentModified){
+                this.showDialogAfterSave = this.loadLessonModalDlgId;
+                this.$root.$emit("bv::show::modal", this.saveOnLoadModalDlgId);
+            }
+            else {
+                this.$root.$emit("bv::show::modal", this.loadLessonModalDlgId);
+            }
+        },
+
 
         handleSaveMenuClick(saveReason?: SaveRequestReason): void {
             // Some problem, like for the load project menu, happens because of changing v-if to v-show (it works first time, but not second time).

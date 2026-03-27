@@ -1,5 +1,5 @@
 import Vue from "vue";
-import { FrameObject, CollapsedState, CurrentFrame, CaretPosition, FrozenState, MessageDefinitions, ObjectPropertyDiff, AddFrameCommandDef, EditorFrameObjects, MainFramesContainerDefinition, DefsContainerDefinition, StateAppObject, UserDefinedElement, ImportsContainerDefinition, EditableFocusPayload, SlotInfos, FramesDefinitions, EmptyFrameObject, NavigationPosition, FormattedMessage, FormattedMessageArgKeyValuePlaceholders, generateAllFrameDefinitionTypes, AllFrameTypesIdentifier, BaseSlot, SlotType, SlotCoreInfos, SlotsStructure, LabelSlotsContent, FieldSlot, SlotCursorInfos, StringSlot, areSlotCoreInfosEqual, StrypeSyncTarget, ProjectLocation, MessageDefinition, PythonExecRunningState, AddShorthandFrameCommandDef, isFieldBaseSlot, StrypePEALayoutMode, SaveRequestReason, RootContainerFrameDefinition, StrypeLayoutDividerSettings, MediaSlot, SlotInfosOptionalMedia, ModifierKeyCode, LessonStepAttributes, StepPanelType } from "@/types/types";
+import { FrameObject, CollapsedState, CurrentFrame, CaretPosition, FrozenState, MessageDefinitions, ObjectPropertyDiff, AddFrameCommandDef, EditorFrameObjects, MainFramesContainerDefinition, DefsContainerDefinition, StateAppObject, UserDefinedElement, ImportsContainerDefinition, EditableFocusPayload, SlotInfos, FramesDefinitions, EmptyFrameObject, NavigationPosition, FormattedMessage, FormattedMessageArgKeyValuePlaceholders, generateAllFrameDefinitionTypes, AllFrameTypesIdentifier, BaseSlot, SlotType, SlotCoreInfos, SlotsStructure, LabelSlotsContent, FieldSlot, SlotCursorInfos, StringSlot, areSlotCoreInfosEqual, StrypeSyncTarget, ProjectLocation, MessageDefinition, PythonExecRunningState, AddShorthandFrameCommandDef, isFieldBaseSlot, StrypePEALayoutMode, SaveRequestReason, RootContainerFrameDefinition, StrypeLayoutDividerSettings, MediaSlot, SlotInfosOptionalMedia, ModifierKeyCode, Lesson, LessonStepDetails, StepPanelType } from "@/types/types";
 import { getObjectPropertiesDifferences, getSHA1HashForObject } from "@/helpers/common";
 import i18n from "@/i18n";
 import {calculateNextCollapseState, checkCodeErrors, checkStateDataIntegrity, cloneFrameAndChildren, evaluateSlotType, generateFlatSlotBases, getAllChildrenAndJointFramesIds, getAvailableNavigationPositions, getFlatNeighbourFieldSlotInfos, getFrameSectionIdFromFrameId, getParentOrJointParent, getSlotDefFromInfos, getSlotIdFromParentIdAndIndexSplit, getSlotParentIdAndIndexSplit, isContainedInFrame, isFramePartOfJointStructure, removeFrameInFrameList, restoreSavedStateFrameTypes, retrieveSlotByPredicate, retrieveSlotFromSlotInfos} from "@/helpers/storeMethods";
@@ -242,17 +242,27 @@ export const useStore = defineStore("app", {
             // -- STORE VALUES FOR INTEGRATED LESSONS --
             isCurrentlyRunningLesson: true, //false, //TBC: TEMP TRUE FOR TESTING
 
-            currentLessonSteps: [] as LessonStepAttributes[],
+            currentLessonSteps: [] as LessonStepDetails[],
 
-            currentLessonStepIndex: 0, // Lessons are built off multiple steps - this stores the current step to be displayed on screen
+            currentLessonStepIndex: 0, // Lessons are built off multiple steps - this stores the index of the current step to be displayed on screen
 
-            unlockedLessonStepIndex: 0, // Stores the highest step reached in this session, used for jumping steps through the progress bar
+            unlockedLessonStepIndex: 0, // Stores the highest step reached in this session, used for jumping steps through the progress bar + requirements
 
-            defaultLessonStep: { // Used to ensure getters do not return UNDEFINED when expecting a LessonStepAttributes
+            errorLessonStepDisplay: { // Used to ensure getters do not return UNDEFINED when expecting a LessonStepDetails
                 stepRef: "errorDisplayingStep",
                 panelType: StepPanelType.RIGHT_POPUP,
                 textContent: "ERROR LOADING STEP DETAILS - CHECK CONSOLE FOR MORE INFORMATION",
-            } as LessonStepAttributes,
+                requirements: [],
+                hints: [],
+            } as LessonStepDetails,
+
+            loadedLessons: [] as Lesson[], // Stores lessons with unparsed lesson files which have been uploaded in the current session, allowing easy re-opening. 
+
+            codeRanSinceLastStep: false, // Used for the <run-code> requirement
+
+            nextStepFailedAttempts: 0, // Used for the <failed-attempts> requirement
+
+            timeNewStepOpened: 0, // Used for the <time-passed> requirement
         };
     },
 
@@ -755,6 +765,11 @@ export const useStore = defineStore("app", {
             return state.currentLessonStepIndex == state.currentLessonSteps.length - 1;
         },
 
+        // Checks whether the user is currently looking at the furthest unlocked step, as requirements only apply to this step
+        isCurrentStepLastUnlocked: (state) => {
+            return state.currentLessonStepIndex == state.unlockedLessonStepIndex;
+        },
+
         // Steps besides the currently displayed one do not need to be accessed.
         // To change the displayed step, modify currentLessonStepIndex and then call this method again.
         getCurrentStepAttributes: (state) => {
@@ -763,12 +778,29 @@ export const useStore = defineStore("app", {
             } 
             else {
                 console.error("Lesson Error: Tried to read non-existent step. Target Index: " + state.currentLessonStepIndex + ", Total Steps: " + state.currentLessonSteps.length); //debug
-                return state.defaultLessonStep; // Returns dummy info instead of Undefined
+                return state.errorLessonStepDisplay; // Returns dummy info instead of Undefined
             }
         },
 
         getTotalLessonSteps: (state) => {
             return state.currentLessonSteps.length;
+        },
+
+        // Returns as Lesson[]
+        getLoadedLessons: (state) => {
+            return state.loadedLessons;
+        },
+
+        getHasRanCode: (state) => {
+            return state.codeRanSinceLastStep;
+        },
+
+        getNextStepAttempts: (state) => {
+            return state.nextStepFailedAttempts;
+        },
+
+        getTimeNewStepOpened: (state) => {
+            return state.timeNewStepOpened;
         },
     },
     
@@ -3188,9 +3220,10 @@ export const useStore = defineStore("app", {
             if(!this.isLessonOnLastStep) {
                 this.currentLessonStepIndex++;
 
-                // Update unlocked steps if needed
+                // All logic involved when reaching a new step
                 if(!(this.unlockedLessonStepIndex >= this.currentLessonStepIndex)) {
                     this.unlockedLessonStepIndex = this.currentLessonStepIndex;
+                    this.codeRanSinceLastStep = false; // Reset requirement checker
                 }
             }
             // ...else do nothing. Should not loop around at the last step, and therefore will not be called anyway.
@@ -3229,8 +3262,26 @@ export const useStore = defineStore("app", {
             this.currentLessonSteps = [];
         },
 
-        setLessonStepsArray(steps: LessonStepAttributes[]) {
-            this.currentLessonSteps = steps; // Takes a full list of steps at once.
+        setLessonStepsArray(steps: LessonStepDetails[]) {
+            this.currentLessonSteps = steps; // Takes a full list of steps at once, generated by the parser.
+        },
+
+        // Requirements-related actions 
+
+        setHasRanCode(hasRun: boolean) {
+            this.codeRanSinceLastStep = hasRun;
+        },
+
+        lessonIncNextStepFailedAttempts() {
+            this.nextStepFailedAttempts += 1;
+        },
+
+        lessonResetNextStepFailedAttempts() {
+            this.nextStepFailedAttempts = 0;
+        },
+
+        lessonSetTimeNewStepOpened() {
+            this.timeNewStepOpened = Date.now();
         },
 
     },

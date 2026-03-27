@@ -270,6 +270,11 @@
     "builtinTurtle": "Turtle",
     "builtinMicrobit": "micro:bit"
   },
+  "lessons": {
+    "dialogTitle": "Choose a Lesson to load",
+    "continue": "Continue",
+    "loadLesson": "Load Lesson"
+  },
   "shortcut": {
     "delete": "Delete",
     "ctrlPlus": "Ctrl+",

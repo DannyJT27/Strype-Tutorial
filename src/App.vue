@@ -131,7 +131,7 @@ import ModalDlg from "@/components/ModalDlg.vue";
 import SimpleMsgModalDlg from "@/components/SimpleMsgModalDlg.vue";
 import {Splitpanes, Pane, PaneData} from "splitpanes";
 import { useStore, settingsStore } from "@/store/store";
-import { AppEvent, ProjectSaveFunction, BaseSlot, CaretPosition, FrameObject, FrozenState, MessageTypes, ModifierKeyCode, Position, PythonExecRunningState, SaveRequestReason, SlotCursorInfos, SlotsStructure, SlotType, StringSlot, StrypeSyncTarget, StrypePEALayoutMode, defaultEmptyStrypeLayoutDividerSettings, EditImageInDialogFunction, EditSoundInDialogFunction, areSlotCoreInfosEqual, SlotCoreInfos, ProjectDocumentationDefinition, LessonStepAttributes, StepPanelType} from "@/types/types";
+import { AppEvent, ProjectSaveFunction, BaseSlot, CaretPosition, FrameObject, FrozenState, MessageTypes, ModifierKeyCode, Position, PythonExecRunningState, SaveRequestReason, SlotCursorInfos, SlotsStructure, SlotType, StringSlot, StrypeSyncTarget, StrypePEALayoutMode, defaultEmptyStrypeLayoutDividerSettings, EditImageInDialogFunction, EditSoundInDialogFunction, areSlotCoreInfosEqual, SlotCoreInfos, ProjectDocumentationDefinition, StepPanelType} from "@/types/types";
 import { CloudDriveAPIState, isSyncTargetCloudDrive } from "@/types/cloud-drive-types";
 import { getFrameContainerUID, getCloudDriveHandlerComponentRefId, getMenuLeftPaneUID, getEditorMiddleUID, getCommandsRightPaneContainerId, isElementLabelSlotInput, CustomEventTypes, getFrameUID, parseLabelSlotUID, getLabelSlotUID, getFrameLabelSlotsStructureUID, getSelectionCursorsComparisonValue, setDocumentSelection, getSameLevelAncestorIndex, autoSaveFreqMins, getImportDiffVersionModalDlgId, getAppSimpleMsgDlgId, getFrameContextMenuUID, getActiveContextMenu, actOnTurtleImport, setPythonExecutionAreaTabsContentMaxHeight, setManuallyResizedEditorHeightFlag, setPythonExecAreaLayoutButtonPos, isContextMenuItemSelected, getStrypeCommandComponentRefId, frameContextMenuShortcuts, getCompanionDndCanvasId, addDuplicateActionOnFramesDnD, removeDuplicateActionOnFramesDnD, getFrameComponent, getCaretContainerComponent, sharedStrypeProjectTargetKey, sharedStrypeProjectIdKey, getCaretContainerUID, getEditorID, getLoadProjectLinkId, AutoSaveKeyNames } from "./helpers/editor";
 import { AllFrameTypesIdentifier} from "@/types/types";
@@ -201,26 +201,6 @@ export default Vue.extend({
             soundToEditInDialog: null as AudioBuffer | null,
             showImgPreview: (() => {}) as (dataURL: string) => void,
             showLessonPanel: false, //local store of isRunningLesson to avoid issues with rendering prior to loading appStore
-
-            //TEMP TEST STEP PANELS
-            testStep1: {
-                stepRef: "debugStep1",
-                panelType: StepPanelType.RIGHT_POPUP,
-                textContent: "Hello World.",
-                colourTheme: "Red",
-            } as LessonStepAttributes,
-            testStep2: {
-                stepRef: "debugStep2",
-                panelType: StepPanelType.LEFT_POPUP,
-                textContent: "Hello World again.",
-                colourTheme: "Green",
-            } as LessonStepAttributes,
-            testStep3: {
-                stepRef: "debugStep3",
-                panelType: StepPanelType.FULLSCREEN_FOCUS_MODAL,
-                textContent: "Hello World (loud).",
-                colourTheme: "Blue",
-            } as LessonStepAttributes,
         };
     },
 

@@ -460,6 +460,10 @@ export default Vue.extend({
             const pythonConsole = this.$refs.pythonConsole as HTMLTextAreaElement;
             pythonConsole.value = "";
             setPythonExecAreaLayoutButtonPos();
+
+            if(this.appStore.isRunningLesson) { // Used for Lesson Requirement when needed
+                this.appStore.setHasRanCode(true);
+            }
             
             // Make sure the text area is disabled when we run the code
             pythonConsole.disabled = true;
