@@ -120,6 +120,7 @@
   "appMessage": {
     "editorFileUpload": "Uploading your file to the editor...",
     "editorAskSaveChangedCode": "Your project contains unsaved changes.\nSave before closing?",
+    "editorAskToDiscardLesson": "Upon opening a new file, your current progress through this Lesson will not be saved, and the Lesson will be stopped.",
     "editorFileUploadWrongVersion": "This code has been produced with a different version of the editor.\nImporting may result in errors.\n\nDo you still want to continue?",
     "importsContainer": "Imports:",
     "defsContainer": "Definitions:",

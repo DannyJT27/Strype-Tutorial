@@ -83,6 +83,7 @@
                 <div>
                     <span  v-t="'appMessage.editorAskSaveChangedCode'" class="load-project-lost-span"/>
                     <br/>
+                    <span v-if="currentlyRunningLesson" v-t="'appMessage.editorAskToDiscardLesson'" class="load-project-lost-span"></span>
                 </div>
             </ModalDlg>            
             <!-- new section -->
@@ -227,6 +228,7 @@ import scssVars from "@/assets/style/_export.module.scss";
 import OpenDemoDlg from "@/components/OpenDemoDlg.vue";
 import OpenLessonDlg from "@/components/OpenLessonDlg.vue";
 import { CloudFileSharingStatus, isSyncTargetCloudDrive } from "@/types/cloud-drive-types";
+import { stopCurrentLesson } from "@/helpers/runningLessonHandler";
 
 //////////////////////
 //     Component    //
@@ -594,6 +596,11 @@ export default Vue.extend({
                     accept: { "text/x-python": [".py"] },
                 },
             ];
+        },
+
+        // Only needed for the 'unsaved changes' popup
+        currentlyRunningLesson(): boolean {
+            return useStore().isRunningLesson;
         },
     },
 
@@ -1093,7 +1100,7 @@ export default Vue.extend({
             // Reset the temporary sync file flag
             this.tempSyncTarget = this.appStore.syncTarget;
             if(isSyncTargetCloudDrive(selectValue) || this.openSharedProjectId.length > 0 ){
-                (this.$refs[this.cloudDriveHandlerComponentId] as InstanceType<typeof CloudDriveHandler>).loadFile(selectValue);
+                (this.$refs[this.cloudDriveHandlerComponentId] as InstanceType<typeof CloudDriveHandler>).loadFile(selectValue); //TBC: LESSON REMOVAL ON CLOUD UPDATE
             }            
             else{               
                 // And let the user choose a file
@@ -1121,6 +1128,7 @@ export default Vue.extend({
                                 }
                                 emitPayload.requestAttention=false;
                                 this.$emit(CustomEventTypes.appShowProgressOverlay, emitPayload);  
+                                stopCurrentLesson(); // Stop current lesson if there is one running
                             });
                             reader.readAsText(file);
                         });

@@ -1317,11 +1317,11 @@ export interface LessonMetadata {
     title: string;
     description: string;
     totalSteps: number;
-    initialFileUrl?: string; // Only needed if specified in Lesson File
+    initialFileName?: string; // Only needed if specified in Lesson File
     //optional stats to show beforehand
     difficulty?: string;
     difficultyColour?: string;
-    estimatedTime?: string;
+    estimatedTime?: number;
 }
 
 // Interface for generating Warnings and Errors when parsing lesson files (see lessonFileParser.ts)

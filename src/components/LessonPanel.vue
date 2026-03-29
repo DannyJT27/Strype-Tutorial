@@ -54,7 +54,7 @@
             <div class="step-panel-content-bottom">
                 <p 
                     class="step-panel-test-mode-text"
-                    v-if="true"
+                    v-if="runningTestMode"
                     @click="openTestModeDlg"
                 >  <!-- PLACEHOLDER CONDITION -->
                     &nbsp;VIEW DEBUG INFO
@@ -74,7 +74,7 @@
                         id="next-step-button" 
                         class="step-panel-button-arrow" 
                         @click="tryNextStep" 
-                        :style="{ backgroundColor: incompleteStepReqs.length > 0 ? '#ffc267' : ''}"
+                        :style="{ backgroundColor: (currentStepIsLatest && incompleteStepReqs.length > 0) ? '#ffc267' : ''}"
                     >
                         &gt;
                     </button>
@@ -108,8 +108,7 @@ import { useStore } from "@/store/store";
 import { mapStores } from "pinia";
 import scssVars from "@/assets/style/_export.module.scss";
 import { LessonStepDetails, StepPanelType, LessonRequirement } from "@/types/types";
-import { getIncompleteRequirements, requirementMessage } from "@/helpers/lessonRequirementHandler";
-import { parseFullLessonFile } from "@/helpers/lessonFileParser";
+import { getIncompleteRequirements, requirementMessage, resetRequirementValues } from "@/helpers/lessonRequirementHandler";
 import LessonTestModeDlg from "@/components/LessonTestModeDlg.vue";
 
 //////////////////////
@@ -179,6 +178,10 @@ export default Vue.extend({
             return this.appStore.isCurrentStepLastUnlocked ?? false;
         },
 
+        runningTestMode() {
+            return this.appStore.getLessonInTestMode ?? false;
+        },
+
         // Builds the progress display in the top left of the component
         progressCountDisplay(): string {
             if(this.appStore.getTotalLessonSteps > 0) {
@@ -243,9 +246,7 @@ export default Vue.extend({
                 }
 
                 if(this.incompleteStepReqs.length == 0) { // Only go next when all requirements are fulfilled
-                    // All actions triggered when opening a new step:
-                    this.appStore.lessonResetNextStepFailedAttempts(); // Reset attempts counter for next step
-                    this.appStore.lessonSetTimeNewStepOpened(); // Marks the time that the next step was opened
+                    resetRequirementValues();
 
                     this.appStore.lessonIncStepIndex();
                     this.showRequirmentMessage = false;
@@ -360,69 +361,102 @@ export default Vue.extend({
         },
 
         //TEMP METHODS
-        runparser() {
+        runparser() { // does a bunch of testing related stuff
             this.appStore.lessonResetStepIndexes();
             this.appStore.lessonResetNextStepFailedAttempts();
             this.appStore.lessonSetTimeNewStepOpened();
-            this.appStore.setLessonStepsArray(parseFullLessonFile([
-                "<metadata>",
-                "   <title>Test",
-                "   Lesson</title>",
-                //"</metadata>",
-                //"<metadata>",
-                "   <description>",
-                "   This is a test lesson.",
-                "   </description>",
-                "</metadata>",
-                "<#>Basic test of <step>",
-                "and its subsections</#>",
-                "<default>",
-                "   <panel-type bar>",
-                //"   <hint>",
-                //"       <text>Default Hint that appears after 5 seconds.</text>",
-                //"       <time-passed 5>",
-                //"   </hint>",
-                "</default>",
-                "<step Step1>",
-                "   <text>Hello</text>",
-                //"   </text>",
-                "   <attributes>",
-                //"       <panel-type>",
-                "       <panel-type popup-right>",
-                //"       <panel-type popup-left>",
-                //"       <attributes><#>Error here!</#>",
-                "       <colour-scheme blue>",
-                "   </attributes>",
-                //"   <requirements>",
-                //"       <run-code>",
-                //"   </requirements>",
-                "</step>",
-                "<step Step2>",
-                "   <text>Step 2.</text>",
-                "   <#>Comment inside step</#>",
-                "   <hint><text>Code has been run</text><run-code></hint>",
-                "</step>",
-                "<step Step3>",
-                "   <text>Step 3.</text>",
-                "   <attributes><colour-scheme monochrome></attributes>",
-                "   <hint-list>",
-                "       <hint>",
-                "           <text>Try messing with the if-statement.</text>",
-                "           <requirements><failed-attempts 3><time-passed 20></requirements>",
-                "       </hint>",
-                "       <hint>",
-                "           <text>Take a look at line 3.</text>",
-                "           <failed-attempts 1>",
-                "       </hint>",
-                "       <hint><text>Hello</text><run-code></hint>",
-                "   </hint-list>",
-                "   <requirements><time-passed 10><run-code></requirements>",
-                "</step>",
-                "<step Step4>",
-                "   <text>Step 4.</text>",
-                "   <attributes><colour-scheme pink></attributes>",
-                "</step>",
-            ]).steps);
+            this.appStore.setLessonInTestModeStatus(true);
+
+            //add a valid file and a slightly imperfect file to the list of uploaded files
+            this.appStore.clearLoadedLessonFiles();
+            this.appStore.newLoadedLesson({
+                sourceLines: [
+                    "<metadata><title>Uploaded Lesson 1</title>",
+                    "<description>This lesson file has no errors.</description>",
+                    "<difficulty HARD></metadata>",
+                    "<defaults><colour-scheme orange><panel-type bar></defaults>",
+                    "<step Step 1>",
+                    "   <text>This is an uploaded lesson file with no errors or suggestions to display.</text>",
+                    "   <attributes><panel-type central-focus></attributes>",
+                    "</step>",
+                    "<step Step 2>",
+                    "   <text>Write a print statement saying 'Hello World'.</text>",
+                    "   <requirements><time-passed 5></requirements>",
+                    "</step>",
+                    "<step Step 3>",
+                    "   <text>Now give it a try.</text>",
+                    "   <hint>",
+                    "       <text>You should run your code.</text>",
+                    "       <failed-attempts 1>",
+                    "   </hint>",
+                    "   <requirements><run-code></requirements>",
+                    "</step>",
+                    "<step Step 4>",
+                    "   <text>Great job!</text>",
+                    "   <attributes><color-scheme green></attributes>",
+                    "</step>",
+                ],
+                details: {
+                    title: "Uploaded Lesson 1",
+                    description: "This lesson file has no errors.",
+                    totalSteps: 4,
+                    difficulty: "hard",
+                    estimatedTime: 15,
+                },
+            });
+
+            this.appStore.newLoadedLesson({
+                sourceLines: [
+                    "<metadata><title>Uploaded Lesson 2</title>",
+                    "<description>This lesson file has a lot of errors.</description><time-passed 20></metadata>",
+                    "<defaults><colour-scheme red><panel-type popup-left></defaults>",
+                    "<step Step 1>",
+                    "   <text>Some text content that you shouldn't be able to see</text>",
+                    "   <panel-type bar>",
+                    "</step>",
+                    "<step>",
+                    "   <text></text>",
+                    "   <requirements><time-passed 99999></requirements>",
+                    "</step>",
+                    "<step Step 3>",
+                    "   <hint>",
+                    "       <text></text>",
+                    "       <failed-attempts 20>",
+                    "   </hint>",
+                    "   <requirements><run-code>",
+                    "</step>",
+                ],
+                details: {
+                    title: "Uploaded Lesson 2",
+                    description: "This lesson file has a lot of errors.",
+                    totalSteps: 3,
+                    difficulty: "2-star",
+                },
+            });
+
+            this.appStore.newLoadedLesson({
+                sourceLines: [
+                    "<metadata><title>Uploaded Lesson 3</title>",
+                    "<description>This lesson file has no errors but some warnings, and an initial file to upload.</description></metadata>",
+                    "<defaults><attributes><colour-scheme blue><panel-type popup-left></attributes></defaults>",
+                    "<step Step 1>",
+                    "   <text>Some text content</text>",
+                    "   <panel-type bar>",
+                    "</step>",
+                    "<step>",
+                    "   <text>Hello</text>",
+                    "   <requirements><time-passed 99999></requirements>",
+                    "</step>",
+                ],
+                details: {
+                    title: "Uploaded Lesson 3",
+                    description: "This lesson file has no errors but some warnings, and an initial file to upload.",
+                    totalSteps: 2,
+                    difficulty: "extreme",
+                    estimatedTime: 30,
+                    initialFileName: "lesson3.spy",
+                },
+            });
         },
     },
 });

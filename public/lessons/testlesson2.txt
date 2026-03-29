@@ -5,13 +5,11 @@
     <description>
         This is the first test lesson, containing 5 steps and some other details.
     </description>
-<metadata>
+</metadata>
 
-<default>
-    <attributes>
-        <panel-type bar>
-    </attributes>
-</default>
+<defaults>
+    <panel-type bar>
+</defaults>
 
 <step Step1>
     <text>
@@ -22,8 +20,8 @@
     </attributes>
 </step>
 
-<step Step5>
+<step Step2>
     <text>
         Thanks for reading.
     </text>
-<step>
+</step>

@@ -75,9 +75,9 @@
                                 </div>
                             </div>
                         </div>
-                        <!-- 'showLessonPanel' determines whether a panel should be displayed, but the position
+                        <!-- 'getLessonBeingRun' determines whether a panel should be displayed, but the position
                             is dependant on the type of panel that the current step is using. -->
-                        <div v-if="showLessonPanel && !isStepPanelTypeFullscreenFocus" class="step-panel-editor-sizing-wrapper">
+                        <div v-if="getLessonBeingRun && !isStepPanelTypeFullscreenFocus" class="step-panel-editor-sizing-wrapper">
                             <div :class="getStepPanelTypeClass"> 
                                 <LessonPanel />
                             </div>
@@ -108,7 +108,7 @@
             </ModalDlg>
         </div>
         <!-- TBC: Condition here VVV -->
-        <div v-if="showLessonPanel && isStepPanelTypeFullscreenFocus"> <!-- Central Step Panel that dims the background for focus -->
+        <div v-if="getLessonBeingRun && isStepPanelTypeFullscreenFocus"> <!-- Central Step Panel that dims the background for focus -->
             <div class="lesson-darkened-background-full" />
             <div class="step-panel-editor-centre-highlighted">
                 <LessonPanel />
@@ -200,7 +200,6 @@ export default Vue.extend({
             imgToEditInDialog: "",
             soundToEditInDialog: null as AudioBuffer | null,
             showImgPreview: (() => {}) as (dataURL: string) => void,
-            showLessonPanel: false, //local store of isRunningLesson to avoid issues with rendering prior to loading appStore
         };
     },
 
@@ -343,6 +342,10 @@ export default Vue.extend({
 
         getCompanionDndCanvasId(): string {
             return getCompanionDndCanvasId();
+        },
+
+        getLessonBeingRun(): boolean {
+            return this.appStore?.isRunningLesson ?? false;
         },
 
         getStepPanelTypeClass(): string {
@@ -851,9 +854,6 @@ export default Vue.extend({
         // the UI should reflect it (showing the Turtle tab) so we look for Turtle in any case.
         actOnTurtleImport();
         /* FITRUE_isPython */
-
-        // In the case that a lesson is being run, update here and present the lesson display (WIP)
-        this.showLessonPanel = this.appStore?.isRunningLesson ?? false;
     },
 
     methods: {

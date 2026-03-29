@@ -1,4 +1,4 @@
-// Helper function for handling Requirements during lessons
+// Helper functions for handling Requirements during lessons
 
 import { useStore } from "@/store/store";
 import { LessonRequirement, LessonStepDetails, StepRequirementType } from "@/types/types";
@@ -8,6 +8,13 @@ import { LessonRequirement, LessonStepDetails, StepRequirementType } from "@/typ
 // - Respective content for all functions in this method.
 // - A working tag to be added to the parser.
 // - Any other logic needed to check the requirement's status.
+
+// Handles the reseting of all requirement based values when starting a new lesson or reaching a new step
+export function resetRequirementValues(): void {
+    useStore().lessonResetNextStepFailedAttempts(); // Reset attempts counter for next step
+    useStore().lessonSetTimeNewStepOpened(); // Marks the time that the next step was opened
+    useStore().setHasRanCode(false);
+}
 
 // Returns the list of incomplete requirements. If length == 0, all requirements are fulfilled.
 export function getIncompleteRequirements(reqList: LessonRequirement[]): LessonRequirement[] {
@@ -146,12 +153,13 @@ export function requirementMessage(req: LessonRequirement, hideExpectedValue: bo
 // Checks for the presence of a specified Requirement Type inside a step, scanning both the Step Requirements and each Hint's requirements
 export function stepHasRequirement(step: LessonStepDetails, type: StepRequirementType): boolean {
     let present = false;
+    console.log("Scanning for " + type);
 
     // Scan the step's requirements
     present = step.requirements.some((r) => r.reqType === type);
 
     // Scan each hint's requirements
-    present = step.hints.some((h) => h.requirements.some((r) => r.reqType === type));
+    present = present || step.hints.some((h) => h.requirements.some((r) => r.reqType === type));
 
     return present;
 }

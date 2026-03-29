@@ -186,13 +186,19 @@ export default Vue.extend({
 
         // Source Code Card
         getStepSourceCode(): string[] {
-            // TBC: ONCE UPLOADING LESSON FILES IS DONE, ADD FETCHING THE STORED LIST
+            if(!this.appStore.getCurrentLesson || !this.appStore.getCurrentStepAttributes) {
+                return ["Error fetching source text."];
+            }
+            const buildReturn = [];
+            for(let i = (this.appStore.getCurrentStepAttributes.sourceLineNum ?? 1) - 1; i < this.appStore.getCurrentLesson.sourceLines.length; i++) {
+                // Add lines to the returned list until </step> is read
+                buildReturn.push(this.appStore.getCurrentLesson.sourceLines[i]);
+                if(this.appStore.getCurrentLesson.sourceLines[i].includes("</step")) {
+                    break;
+                }
+            }
 
-            return ["To be completed later", "  once uploading Lesson Files works", 
-                "       and the source code is accessible from the store", "", 
-                "For now here's what it will look like, only showing the details for this step:", "<step Step 1>",
-                "   <text>", "      This is some text that is purposefully long to test the limits of the display port. Hopefully it should just wrap around and make the rectangle taller.", 
-                "   </text>", "   <panel-type bar>", "</step>"];
+            return buildReturn;
         },
     },
 

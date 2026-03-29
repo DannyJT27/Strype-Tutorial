@@ -20,11 +20,28 @@ function newDebugMessage(message: string, context: LessonParseTokenContext, line
     return debugMessage;
 }
 
-// Context object storing all info needed for tag token evaluation methods (previous method implementation had 9+ parameter functions which is not good)
+// All attributes that take a specific set of valid parameters have their lists kept consistent here
+export function fetchValidParameters(token: string): string[] {
+    switch(token) {
+    case("colour-scheme"):
+        return ["red", "orange", "green", "blue", "pink", "monochrome"];
 
+    case("difficulty"):
+        return ["easy", "beginner", "medium", "intermediate", "hard", 
+            "advanced", "extreme", "1-star", "2-star", "3-star", 
+            "4-star", "5-star"];
+    case("panel-type"):
+        // IMPORTANT: tagToken_panelType has its own string->Enum map for parsing the token, named 'panelArgMap'.
+        // When a new value is put here, it will also need to be added there.
+        return ["popup-left", "popup-right", "bar", "central-focus"];
+    }
+    return []; //empty return when no value is matched
+}
+
+// Context object storing all info needed for tag token evaluation methods (prevents helper methods requiring 5+ parameters)
 interface LessonParseTokenContext {
-    // Store of <default> step, which can be modified
-    defaultStepTemplate: LessonStepDetails;
+    // Store of <defaults> step, which can be modified
+    defaultsStepTemplate: LessonStepDetails;
 
     // Breakdown of token into individual words
     tokenArgs: string[];
@@ -32,7 +49,6 @@ interface LessonParseTokenContext {
     // Nest level related data for the parser to track
     currentNestLevels: LessonParseNestSection[];
     thisNest: LessonParseNestSection;
-    rootNest: LessonParseNestSection; // Stores either 'step' or 'default'
 
     // Information used for debug messages
     stepRef: string;
@@ -48,12 +64,13 @@ interface LessonParseTokenContext {
 
 // Main token reader for text, making changes to parseResult as required. Logic is much simpler as most error cases are already handled in evaluateTagToken().
 // Unlike evaluateTagToken, all logic is kept within this one function. Each case is much shorter with much fewer errors to account for, and there are much fewer unique tokens to handle.
+// NOTE: ANY NEW TEXT TOKEN SECTIONS MUST BE LABELLED IN THE nestLevelsWithValidText[] LIST INSIDE lessonFileParser.ts
 export function evaluateTextToken(token: string, nestLevels: LessonParseNestSection[], currentLineNum: number, parseResult: LessonParseResult, initialDefaultStep: LessonStepDetails, parserConfig: LessonParserConfiguration) : void {
     // -- SPECIAL FAILSAFE -- 
-    if(nestLevels.length == 0) { // "base_nest" has somehow been popped
+    if(nestLevels.length == 0) { // "root" has somehow been popped
         // This should never be encountered by a user, but this will break a LOT of stuff if it happens to occur, so this is mainly for debugging.
-        nestLevels.push({nestLevel: "base_nest", contents: []});
-        console.error("Lesson Error: 'base_nest' was somehow popped. There is a major fault with the parser.");
+        nestLevels.push({nestLevel: "root", contents: []});
+        console.error("Lesson Error: 'root' was somehow popped. There is a major fault with the parser.");
     }
 
     // -- SILENT RETURN CASES --
@@ -79,19 +96,18 @@ export function evaluateTextToken(token: string, nestLevels: LessonParseNestSect
 
     // -- INIT --
     const context: LessonParseTokenContext = {
-        // These elements should NOT be edited beyond initialization
-        tokenArgs: [], // textTokens do not require this
-        rootNest: nestLevels.length > 1 ? nestLevels[1] : nestLevels[0], // Used to distinguish between <default> and <step> (index 0 is base_nest)
+        // These elements should NOT be edited beyond first initialization, instead only being read
+        tokenArgs: token.slice(1, -1).split(" "), // Removes the < and >, and then splits by space
         lineNum: currentLineNum,
-        stepRef: parseResult.steps.length > 0 ? parseResult.steps[parseResult.steps.length - 1].stepRef : "", //Obtain stepRef from parseResult
         config: parserConfig,
 
-        // These elements likely will be edited
+        // These elements could be edited
+        stepRef: parseResult.steps.length > 0 ? parseResult.steps[parseResult.steps.length - 1].stepRef : "", //Obtain stepRef from parseResult
         docText: "", // Used to store a tag's specific documentation info, which will be used in most debug messages unless another page is more important
         docLink: "",
         currentNestLevels: nestLevels,
         thisNest: nestLevels[nestLevels.length - 1],
-        defaultStepTemplate: initialDefaultStep, // Modified by <default>, cloned by <step>
+        defaultsStepTemplate: initialDefaultStep, // Modified by <defaults>, cloned by <step>
     };
 
     console.log("Detected text token: " + token + " at nest level " + context.thisNest.nestLevel); //debug
@@ -112,7 +128,7 @@ export function evaluateTextToken(token: string, nestLevels: LessonParseNestSect
     }
     
     if(context.currentNestLevels.length == 1) {
-        // Text token is on base_nest, meaning it is not in any sections
+        // Text token is on root, meaning it is not in any sections
         parseResult.ERRORS.push(newDebugMessage("FATAL - Unsectioned text segment: '" + (token.length > 32 ? (token.slice(0, 32) + "...") : token) + "' To add comments safely, please use the comment tags <#> </#>.", context, 0)); //TBC DOCUMENTATION: COMMENTS
         parseResult.success = false;
         return;
@@ -124,7 +140,7 @@ export function evaluateTextToken(token: string, nestLevels: LessonParseNestSect
 
     // -- TEXT TOKEN HANDLING --
 
-    // nest level "#" (comments) is handled in Silent Return cases
+    // nest level "#" (comments) is handled in Silent Return cases. No further logic is needed for the text token as it is simply a comment.
 
     ////////////////////////\\\\\\\\\\\\\\\\\\\\\\\\
     if(context.thisNest.nestLevel == "description") { 
@@ -136,7 +152,7 @@ export function evaluateTextToken(token: string, nestLevels: LessonParseNestSect
             parseResult.warnings.push(newDebugMessage("Lesson Description shortened due to exceeding the character limit of " + context.config.MAX_LENGTH_DESCRIPTION + ".", context, 0, "", ""));
         }
 
-        parseResult.details.title = token.slice(0, context.config.MAX_LENGTH_DESCRIPTION);
+        parseResult.details.description = token.slice(0, context.config.MAX_LENGTH_DESCRIPTION);
         context.thisNest.contents.push("valid_token"); // Indicator that there is a valid text token within this nest
         return;
     }
@@ -146,17 +162,13 @@ export function evaluateTextToken(token: string, nestLevels: LessonParseNestSect
         context.docText = "Step Text";
         context.docLink = "TBC DOCUMENTATION";
 
-        if(context.rootNest.nestLevel != "step" && context.rootNest.nestLevel != "default") {
-            // If the nest level is invalid, no error message is needed due to that already being displayed by the tag token evaluator
+        if(context.currentNestLevels[1].nestLevel != "step") {
+            // If the parent nest level is invalid, no error message is needed due to that already being displayed by the tag token evaluator
             return;
         }
 
-        const currentStep = (context.rootNest.nestLevel == "step")
-            ? parseResult.steps[parseResult.steps.length - 1]   // this token is inside the most recent <step>
-            : context.defaultStepTemplate;                      // this token is inside <default>
-
         // Update the step
-        currentStep.textContent = token;
+        parseResult.steps[parseResult.steps.length - 1].textContent = token;
         context.thisNest.contents.push("valid_token"); // Indicator that there is a valid text token within this nest
         return;
     }
@@ -166,16 +178,13 @@ export function evaluateTextToken(token: string, nestLevels: LessonParseNestSect
         context.docText = "Step Hints";
         context.docLink = "TBC DOCUMENTATION";
 
-        const currentStep = (context.rootNest.nestLevel == "step")
-            ? parseResult.steps[parseResult.steps.length - 1]   // this token is inside the most recent <step>
-            : context.defaultStepTemplate;                      // this token is inside <default>
-
         // [u] Text isn't too long
         if(token.length > context.config.MAX_LENGTH_DESCRIPTION) {
             parseResult.warnings.push(newDebugMessage("Hint Text '" + token.slice(0, 32) + "...' shortened due to exceeding the character limit of " + context.config.MAX_LENGTH_HINT_TEXT + ".", context, 0, "", ""));
         }
 
         // Update the hint
+        const currentStep = parseResult.steps[parseResult.steps.length - 1];
         currentStep.hints[currentStep.hints.length - 1].message = token.slice(0, context.config.MAX_LENGTH_HINT_TEXT);
         context.thisNest.contents.push("valid_token"); // Indicator that there is a valid text token within this nest
         return;
@@ -199,7 +208,7 @@ export function evaluateTextToken(token: string, nestLevels: LessonParseNestSect
     ////////////////////////\\\\\\\\\\\\\\\\\\\\\\\\
     // If this point is reached, then the text is not stored within a valid nest. Due to the possibility of it containing another tag, this needs to be a FATAL error.
     // (if this message is shown for a valid nest, then that nest's if-condition is missing a return; at the end of its blcok)
-    parseResult.ERRORS.push(newDebugMessage("FATAL - Invalid location for text segment: '" + (token.length > 32 ? (token.slice(0, 32) + "...") : token) + "' Uncommented text segments cannot be included in the <" + context.thisNest.nestLevel + "> section. To add comments safely, please use the comment tags <#> </#>.", context, 0)); //TBC DOCUMENTATION: COMMENTS
+    parseResult.ERRORS.push(newDebugMessage("FATAL - Invalid location for text segment: '" + (token.length > 32 ? (token.slice(0, 32) + "...") : token) + "' Uncommented text segments cannot be included in the <" + context.thisNest.nestLevel.split("_")[0] + "> section. To add comments safely, please use the comment tags <#> </#>.", context, 0)); //TBC DOCUMENTATION: COMMENTS
     parseResult.success = false;
     return;    
 }
@@ -210,32 +219,30 @@ export function evaluateTextToken(token: string, nestLevels: LessonParseNestSect
 // Individual tag tokens have their own unique function for logic and debugging, named as tagToken_{token}().
 export function evaluateTagToken(token: string, nestLevels: LessonParseNestSection[], currentLineNum: number, parseResult: LessonParseResult, initialDefaultStep: LessonStepDetails, parserConfig: LessonParserConfiguration) : void {
     // -- SPECIAL FAILSAFE -- 
-    if(nestLevels.length == 0) { // "base_nest" has somehow been popped
+    if(nestLevels.length == 0) { // "root" has somehow been popped
         // This should never be encountered by a user, but this will break a LOT of stuff if it happens to occur, so this is mainly for debugging.
-        nestLevels.push({nestLevel: "base_nest", contents: []});
-        console.error("Lesson Error: 'base_nest' was somehow popped. There is a major fault with the parser.");
+        nestLevels.push({nestLevel: "root", contents: []});
+        console.error("Lesson Error: 'root' was somehow popped. There is a major fault with the parser.");
     }
     
     // -- INIT --
     const context: LessonParseTokenContext = {
-        // These elements should NOT be edited beyond initialization
+        // These elements should NOT be edited beyond first initialization, instead only being read
         tokenArgs: token.slice(1, -1).split(" "), // Removes the < and >, and then splits by space
-        rootNest: nestLevels.length > 1 ? nestLevels[1] : nestLevels[0], // Used to distinguish between <default> and <step> (index 0 is base_nest)
         lineNum: currentLineNum,
-        stepRef: parseResult.steps.length > 0 ? parseResult.steps[parseResult.steps.length - 1].stepRef : "", //Obtain stepRef from parseResult
         config: parserConfig,
 
-        // These elements will be edited
+        // These elements could be edited
+        stepRef: parseResult.steps.length > 0 ? parseResult.steps[parseResult.steps.length - 1].stepRef : "", //Obtain stepRef from parseResult
         docText: "", // Used to store a tag's specific documentation info, which will be used in most debug messages unless another page is more important
         docLink: "",
         currentNestLevels: nestLevels,
         thisNest: nestLevels[nestLevels.length - 1],
-        defaultStepTemplate: initialDefaultStep, // Modified by <default>, cloned by <step>
+        defaultsStepTemplate: initialDefaultStep, // Modified by <defaults>, cloned by <step>
     };
   
-    // Lists of all potentially missing closing tags in various nest levels, mainly used for detecting commonly missing closing tags and working around them them
-    const stepAllSubsections = ["text", "attributes", "requirements", "hints", "req"];
-    const metadataAllSubsections = ["title", "description", "project-name"];
+    // Lists of all potentially missing closing tags in the step nest level, mainly used for detecting commonly missing closing tags and working around them them
+    const stepAllSubsections = ["text", "attributes", "requirements", "hints", "hint-list"];
 
     // -- INSTANT ERROR CASES --
 
@@ -282,17 +289,31 @@ export function evaluateTagToken(token: string, nestLevels: LessonParseNestSecti
         return;
     }
 
-    if(context.tokenArgs[0] == "default" || context.tokenArgs[0] == "/default") { 
-        context.docText = "Default";
+    if(context.tokenArgs[0] == "defaults" || context.tokenArgs[0] == "/defaults") { 
+        context.docText = "Attribute Defaults";
         context.docLink = "TBC DOCUMENTATION";
-        tagToken_default(context, parseResult);
+        tagToken_defaults(context, parseResult);
         return;
     }
 
     if(context.tokenArgs[0] == "description" || context.tokenArgs[0] == "/description") {
         context.docText = "Lesson Description";
         context.docLink = "TBC DOCUMENTATION";
-        tagToken_description(metadataAllSubsections, context, parseResult);
+        tagToken_description(context, parseResult);
+        return;
+    }
+
+    if(context.tokenArgs[0] == "difficulty" || context.tokenArgs[0] == "/difficulty") {
+        context.docText = "Lesson Difficulty";
+        context.docLink = "TBC DOCUMENTATION";
+        tagToken_difficulty(context, parseResult);
+        return;
+    }
+
+    if(context.tokenArgs[0] == "estimated-time" || context.tokenArgs[0] == "/estimated-time") {
+        context.docText = "Lesson Estimated Time";
+        context.docLink = "TBC DOCUMENTATION";
+        tagToken_estimatedTime(context, parseResult);
         return;
     }
 
@@ -328,7 +349,7 @@ export function evaluateTagToken(token: string, nestLevels: LessonParseNestSecti
     if(context.tokenArgs[0] == "metadata" || context.tokenArgs[0] == "/metadata") { 
         context.docText = "Lesson Metadata";
         context.docLink = "TBC DOCUMENTATION";
-        tagToken_metadata(metadataAllSubsections, context, parseResult);
+        tagToken_metadata(context, parseResult);
         return;
     }
 
@@ -364,7 +385,7 @@ export function evaluateTagToken(token: string, nestLevels: LessonParseNestSecti
     if(context.tokenArgs[0] == "step" || context.tokenArgs[0] == "/step") { 
         context.docText = "Steps";
         context.docLink = "TBC DOCUMENTATION";
-        tagToken_step(context, parseResult);
+        tagToken_step(stepAllSubsections, context, parseResult);
         return;
     }
 
@@ -394,7 +415,7 @@ export function evaluateTagToken(token: string, nestLevels: LessonParseNestSecti
     if(context.tokenArgs[0] == "title" || context.tokenArgs[0] == "/title") {
         context.docText = "Lesson Title";
         context.docLink = "TBC DOCUMENTATION";
-        tagToken_title(metadataAllSubsections, context, parseResult);
+        tagToken_title(context, parseResult);
         return;
     }
 
@@ -457,6 +478,16 @@ function tagToken_commentHashtag(context: LessonParseTokenContext, parseResult: 
     }
 }
 
+// Default suggestion message for similarly sounding tags being confused
+// nestCheck <- the nest(s) where this likely happened
+// potentialToken <- the tag that should be in its place
+// Also overrides docText and docLink to direct the user to the potentialToken
+function tagTokenHelper_similarTagSuggestion(nestCheck: string[], potentialToken: string, context: LessonParseTokenContext, parseResult: LessonParseResult, docText: string, docLink: string) {
+    if(nestCheck.includes(context.thisNest.nestLevel)) {
+        parseResult.suggestions.push(newDebugMessage("<" + context.tokenArgs[0] + "> tag detected within <" + context.thisNest.nestLevel.split("_")[0] + "> section. Did you mean <" + potentialToken + ">?", context, 0, docText, docLink));
+    }
+}
+
 // Baseline 'no args' requirement.
 // No return needed as arguments are simply ignored
 function tagTokenHelper_noArgsGeneric(context: LessonParseTokenContext, parseResult: LessonParseResult, overrideMessage?: string) {
@@ -480,7 +511,12 @@ function tagTokenHelper_fixedArgsGeneric(expectedArgs: number, context: LessonPa
     return false;
 }
 
-// Covers the two main default requirements for (almost?) all closing tags:
+// Default warning message for when there is no closer tag needed for this type of token
+function tagTokenHelper_noCloseTagNeeded(context: LessonParseTokenContext, parseResult: LessonParseResult) {
+    parseResult.warnings.push(newDebugMessage("Unnecessary closing tag detected: <" + context.tokenArgs.join(" ") + ">. This tag type does not require a closer. The closer tag will be ignored.", context, 0));
+}
+
+// Covers the two main defaults requirements for (almost?) all closing tags:
 // - No arguments
 // - Valid opening tag (checked by nest level)
 // Returns 'true' when evaluateTagToken() needs to return early (ignore the tag).
@@ -489,7 +525,7 @@ function tagTokenHelper_closeTagGeneric(context: LessonParseTokenContext, parseR
 
     // Nest Level Requirement: same as the token name without the / (e.g. /text requires text)
     if(context.thisNest.nestLevel != context.tokenArgs[0].slice(1) + (variantSuffix ?? "")) { //slice(1) removes the /
-        parseResult.warnings.push(newDebugMessage("Invalid positioning for closing tag: <" + context.tokenArgs.join(" ") + ">. No valid paired opening tag is detected. This tag will be ignored.", context, 0)); //TBC DOCUMENTATION
+        parseResult.warnings.push(newDebugMessage("Invalid positioning for closing tag: <" + context.tokenArgs.join(" ") + ">, found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. No valid paired opening tag is detected. This tag will be ignored.", context, 0)); //TBC DOCUMENTATION
         return true;
     }
 
@@ -525,14 +561,14 @@ function tagTokenHelper_subsectionMissingCloserCheck(potentialSubsections: strin
     // [u] Check for missing closing tags of other subsections
     if(potentialSubsections.includes(context.thisNest.nestLevel) && context.thisNest.nestLevel != context.tokenArgs[0]) {
         if(context.config.CONTINUE_FROM_MISSING_CLOSER) {
-            parseResult.ERRORS.push(newDebugMessage("Likely missing closing tag </" + context.thisNest.nestLevel + ">. All section-based tags must have a closer. The parser will attempt to continue beyond this.", context, 0)); //TBC DOCUMENTATION: SECTIONS
+            parseResult.ERRORS.push(newDebugMessage("Likely missing closing tag </" + context.thisNest.nestLevel.split("_")[0] + ">. All section-based tags must have a closer. The parser will attempt to continue beyond this.", context, 0)); //TBC DOCUMENTATION: SECTIONS
             
             // Attempts to resolve the issue by removing the step nestLevel and continuing. Only continues to scan for more errors for convenience.
             context.currentNestLevels.pop();
             context.thisNest = context.currentNestLevels[context.currentNestLevels.length - 1];
         }
         else {
-            parseResult.ERRORS.push(newDebugMessage("FATAL - Likely missing closing tag </" + context.thisNest.nestLevel + ">. All section-based tags must have a closer.", context, 0)); //TBC DOCUMENTATION: SECTIONS
+            parseResult.ERRORS.push(newDebugMessage("FATAL - Likely missing closing tag </" + context.thisNest.nestLevel.split("_")[0] + ">. All section-based tags must have a closer.", context, 0)); //TBC DOCUMENTATION: SECTIONS
             parseResult.success = false;
             return true;
         }
@@ -542,18 +578,18 @@ function tagTokenHelper_subsectionMissingCloserCheck(potentialSubsections: strin
 }
 
 ///////////////////////////////////////////
-// --- METADATA DEFINITION - 'base/' --- //
+// --- METADATA DEFINITION - 'root/' --- //
 ///////////////////////////////////////////
 // Definition of the Metadata section
 
 // Lesson metadata section for details about the Lesson, such as its title and description
-function tagToken_metadata(metadataAllSubsections: string[], context: LessonParseTokenContext, parseResult: LessonParseResult) {
+function tagToken_metadata(context: LessonParseTokenContext, parseResult: LessonParseResult) {
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Nest Level Requirement: base (no nesting)
-        if(context.thisNest.nestLevel != "base_nest") {
-            parseResult.warnings.push(newDebugMessage("Invalid positioning for Metadata tag: " + token + ". The Metadata section should not be nested in other sections. This tag will be ignored.", context, 0));
+        // Nest Level Requirement: root (no nesting)
+        if(context.thisNest.nestLevel != "root") {
+            parseResult.warnings.push(newDebugMessage("Invalid positioning for Metadata tag: " + token + ", found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. The Metadata section should not be nested in other sections. This tag will be ignored.", context, 0));
             return;
         }
 
@@ -572,7 +608,7 @@ function tagToken_metadata(metadataAllSubsections: string[], context: LessonPars
             }
         }
 
-        // [u] Positioning within the file, checked via the contents of base_nest. Recommended to be at the top of the file before any steps or defaults.
+        // [u] Positioning within the file, checked via the contents of root. Recommended to be at the top of the file before any steps or defaults.
         if(context.thisNest.contents.length > 0 && context.thisNest.contents[0] != "metadata") {
             parseResult.suggestions.push(newDebugMessage("Consider moving the <metadata> section to the top of the Lesson File for better organisation.", context, 0));
         }
@@ -586,16 +622,11 @@ function tagToken_metadata(metadataAllSubsections: string[], context: LessonPars
             return; // ^ If true, tag needs to be ignored
         }
 
-        // [u] Closer check for metadata sections
-        if(tagTokenHelper_subsectionMissingCloserCheck(metadataAllSubsections, context, parseResult)) {
-            return; // ^ If true, tag needs to be ignored
-        }
-
         // [u] Empty metadata section
         if(context.thisNest.contents.length == 0) {
             parseResult.warnings.push(newDebugMessage("Empty Metadata section detected. Refer to the documentation for a list of valid tags to be used within this section. This section will be ignored.", context, 0));
             
-            // Remove this Metadata record from base_nest contents (will be most recent entry assuming valid opening tag)
+            // Remove this Metadata record from root contents (will be most recent entry assuming valid opening tag)
             // Prevents a niche error case where user has an empty <metadata> section, and then a valid one right after. Ignoring this section will allow the parser to read the next one as valid.
             context.currentNestLevels[0].contents.pop();
         }
@@ -607,38 +638,31 @@ function tagToken_metadata(metadataAllSubsections: string[], context: LessonPars
 }
 
 //////////////////////////////////////////////////
-// --- METADATA CONTENTS - 'base/metadata/' --- //
+// --- METADATA CONTENTS - 'root/metadata/' --- //
 //////////////////////////////////////////////////
 // Contents of the Metadata section that affect the displayed information about a Lesson inside the 'Load Lesson' Modal.
 
 // Description of the Lesson File, displayed at the beginning when starting the Lesson.
-function tagToken_description(metadataAllSubsections: string[], context: LessonParseTokenContext, parseResult: LessonParseResult) {
+function tagToken_description(context: LessonParseTokenContext, parseResult: LessonParseResult) {
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Closer check for metadata sections
-        if(tagTokenHelper_subsectionMissingCloserCheck(metadataAllSubsections, context, parseResult)) {
-            return; // ^ If true, tag needs to be ignored
-        }
-
-        // Nest Level Requirement: metadata (or base_nest if allowed by ALLOW_METADATA_IN_BASE_NEST)
-        if(context.thisNest.nestLevel == "base_nest" && context.config.ALLOW_METADATA_IN_BASE_NEST) {
+        // Nest Level Requirement: metadata (or root if allowed by ALLOW_METADATA_IN_ROOT)
+        if(context.thisNest.nestLevel == "root" && context.config.ALLOW_METADATA_IN_ROOT) {
             parseResult.suggestions.push(newDebugMessage("Consider placing " + token + " subsection within the Lesson's <metadata> section for better organisation.", context, 0));
         } 
         else if(context.thisNest.nestLevel != "metadata") {
             // Potential mistake between distinguishing <title> and <text>
-            if(context.thisNest.nestLevel == "step" || context.thisNest.nestLevel == "default") {
-                parseResult.suggestions.push(newDebugMessage("Lesson Description tag detected within <" + context.thisNest.nestLevel + "> section. Did you mean <text>?", context, 0)); //TBC DOCUMENTATION: TEXT
-            }
+            tagTokenHelper_similarTagSuggestion(["step", "hint"], "text", context, parseResult, "", ""); //TBC DOCUMENTATION: TEXT
 
-            parseResult.warnings.push(newDebugMessage("Invalid positioning for Description tag: " + token + ". The Lesson's Description should be specified within the <metadata> section. This tag will be ignored.", context, 0));
+            parseResult.warnings.push(newDebugMessage("Invalid positioning for Description tag: " + token + ", found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. The Lesson's Description should be specified within the <metadata> section. This tag will be ignored.", context, 0));
             return;
         }
 
         // Arguments Requirment: no args with special informative message
         tagTokenHelper_noArgsGeneric(context, parseResult, "Unnecessary arguments found within tag: <" + context.tokenArgs.join(" ") + ">. These arguments will be ignored.");
     
-        // [u] Check for whether description has already been modified (can't use normal nest.contents method due to potentially multiple metadata sections + non-nested descriptions)
+        // [u] Check for whether value has already been modified (can't use normal nest.contents method due to potentially multiple metadata sections + non-nested tokens)
         if(parseResult.details.description != context.config.PLACEHOLDER_TEXT) {
             parseResult.ERRORS.push(newDebugMessage("FATAL - Multiple Description sections detected. Please ensure the Lesson File only contains one <description> tag.", context, 0));
             parseResult.success = false;
@@ -664,34 +688,113 @@ function tagToken_description(metadataAllSubsections: string[], context: LessonP
     }
 }
 
-// Title of the Lesson File (not the project name).
-function tagToken_title(metadataAllSubsections: string[], context: LessonParseTokenContext, parseResult: LessonParseResult) {
+// Difficulty indicator shown in the list of lessons
+function tagToken_difficulty(context: LessonParseTokenContext, parseResult: LessonParseResult) {
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // [u] Closer check for metadata sections
-        if(tagTokenHelper_subsectionMissingCloserCheck(metadataAllSubsections, context, parseResult)) {
+        // Nest Level Requirement: metadata (or root if allowed by ALLOW_METADATA_IN_ROOT)
+        if(context.thisNest.nestLevel == "root" && context.config.ALLOW_METADATA_IN_ROOT) {
+            parseResult.suggestions.push(newDebugMessage("Consider placing " + token + " subsection within the Lesson's <metadata> section for better organisation.", context, 0));
+        } 
+        else if(context.thisNest.nestLevel != "metadata") {
+            parseResult.warnings.push(newDebugMessage("Invalid positioning for Difficulty tag: " + token + ", found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. The Lesson's Difficulty should be specified within the <metadata> section. This tag will be ignored.", context, 0));
+            return;
+        }
+
+        // Argument Requirement: 1
+        if(tagTokenHelper_fixedArgsGeneric(1, context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
 
-        // Nest Level Requirement: metadata (or base_nest if allowed by ALLOW_METADATA_IN_BASE_NEST)
-        if(context.thisNest.nestLevel == "base_nest" && context.config.ALLOW_METADATA_IN_BASE_NEST) {
+        // [u] Unknown argument which does not match any valid inputs
+        if(!fetchValidParameters("difficulty").includes(context.tokenArgs[1].toLowerCase())) {
+            parseResult.warnings.push(newDebugMessage("Unknown Difficulty argument: " + token + ". Refer to the documentation for a list of valid arguments. This tag will be ignored.", context, 0));
+            return;
+        }
+    
+        // [u] Check for whether value has already been modified (can't use normal nest.contents method due to potentially multiple metadata sections + non-nested tokens)
+        if(parseResult.details.difficulty) {
+            parseResult.warnings.push(newDebugMessage("Multiple Difficulty tags detected. Lessons can only be assigned a single Difficulty value. This tag will be ignored.", context, 0));
+            return;
+        }
+
+        parseResult.details.difficulty = context.tokenArgs[1].toLowerCase(); // Assign the value
+        context.thisNest.contents.push(context.tokenArgs[0]); // Add to the parent nest
+    }
+    else { // closer tag
+        // This tag type has no need for a closer tag, and therefore is disregarded
+        tagTokenHelper_noCloseTagNeeded(context, parseResult);
+    }
+}
+
+// Estimated time display shown in the list of lessons
+function tagToken_estimatedTime(context: LessonParseTokenContext, parseResult: LessonParseResult) {
+    const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
+
+    if(context.tokenArgs[0][0] != "/") { // opener tag
+        // Nest Level Requirement: metadata (or root if allowed by ALLOW_METADATA_IN_ROOT)
+        if(context.thisNest.nestLevel == "root" && context.config.ALLOW_METADATA_IN_ROOT) {
+            parseResult.suggestions.push(newDebugMessage("Consider placing " + token + " subsection within the Lesson's <metadata> section for better organisation.", context, 0));
+        } 
+        else if(context.thisNest.nestLevel != "metadata") {
+            tagTokenHelper_similarTagSuggestion(["step", "requirements", "hint", "requirements_inHint"], "time-passed", context, parseResult, "", ""); //TBC DOCUMENTATION: TIME PASSED
+
+            parseResult.warnings.push(newDebugMessage("Invalid positioning for Estimated Time tag: " + token + ", found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. The Lesson's Estimated Time should be specified within the <metadata> section. This tag will be ignored.", context, 0));
+            return;
+        }
+
+        // Argument Requirement: 1
+        if(tagTokenHelper_fixedArgsGeneric(1, context, parseResult)) {
+            return; // ^ If true, tag needs to be ignored
+        }
+
+        // [u] Argument restrictions: must be a positive integer, shouldn't be insanely high
+        if(context.tokenArgs[1] == "0" || !(/^\d+$/.test(context.tokenArgs[1]))) { // '^\d+$' is a Positive Integer Regex, allowing strings that only contain digits 0-9 (no . or -)
+            parseResult.warnings.push(newDebugMessage("Invalid argument: " + token + ". This tag only accepts integers greater than 0 as an argument, measured in minutes. This tag will be ignored.", context, 0));
+            return;
+        }
+        if(Number(context.tokenArgs[1]) > 999) {
+            parseResult.warnings.push(newDebugMessage("Invalid argument: " + token + ". The maximum value for this argument is 999 minutes. This tag will be ignored.", context, 0));
+            return;
+        }
+    
+        // [u] Check for whether value has already been modified (can't use normal nest.contents method due to potentially multiple metadata sections + non-nested tokens)
+        if(parseResult.details.estimatedTime) {
+            parseResult.warnings.push(newDebugMessage("Multiple Estimated Time tags detected. Lessons can only be assigned a single Difficulty value. This tag will be ignored.", context, 0));
+            return;
+        }
+
+        parseResult.details.estimatedTime = Number(context.tokenArgs[1]); // Assign the value
+        context.thisNest.contents.push(context.tokenArgs[0]); // Add to the parent nest
+    }
+    else { // closer tag
+        // This tag type has no need for a closer tag, and therefore is disregarded
+        tagTokenHelper_noCloseTagNeeded(context, parseResult);
+    }
+}
+
+// Title of the Lesson File (not the project name).
+function tagToken_title(context: LessonParseTokenContext, parseResult: LessonParseResult) {
+    const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
+
+    if(context.tokenArgs[0][0] != "/") { // opener tag
+        // Nest Level Requirement: metadata (or root if allowed by ALLOW_METADATA_IN_ROOT)
+        if(context.thisNest.nestLevel == "root" && context.config.ALLOW_METADATA_IN_ROOT) {
             parseResult.suggestions.push(newDebugMessage("Consider placing " + token + " subsection within the Lesson's <metadata> section for better organisation.", context, 0));
         } 
         else if(context.thisNest.nestLevel != "metadata") {
             // Potential mistake between distinguishing <title> and <text>
-            if(context.thisNest.nestLevel == "step" || context.thisNest.nestLevel == "default") {
-                parseResult.suggestions.push(newDebugMessage("Lesson Title tag detected within <" + context.thisNest.nestLevel + "> section. Did you mean <text>?", context, 0)); //TBC DOCUMENTATION: TEXT
-            }
+            tagTokenHelper_similarTagSuggestion(["step", "hint"], "text", context, parseResult, "", ""); //TBC DOCUMENTATION: TEXT
 
-            parseResult.warnings.push(newDebugMessage("Invalid positioning for Title tag: " + token + ". The Lesson's Title should be specified within the <metadata> section. This tag will be ignored.", context, 0));
+            parseResult.warnings.push(newDebugMessage("Invalid positioning for Title tag: " + token + ", found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. The Lesson's Title should be specified within the <metadata> section. This tag will be ignored.", context, 0));
             return;
         }
 
         // Arguments Requirment: no args with special informative message
         tagTokenHelper_noArgsGeneric(context, parseResult, "Unnecessary arguments found within tag: <" + context.tokenArgs.join(" ") + ">. The Lesson Title is specified as a text section, not within tag arguments. These arguments will be ignored.");
     
-        // [u] Check for whether title has already been modified (can't use normal nest.contents method due to potentially multiple metadata sections + non-nested titles)
+        // [u] Check for whether value has already been modified (can't use normal nest.contents method due to potentially multiple metadata sections + non-nested tokens)
         if(parseResult.details.title != context.config.PLACEHOLDER_TEXT) {
             parseResult.ERRORS.push(newDebugMessage("FATAL - Multiple Title sections detected. Please ensure the Lesson File only contains one <title> tag.", context, 0));
             parseResult.success = false;
@@ -718,27 +821,27 @@ function tagToken_title(metadataAllSubsections: string[], context: LessonParseTo
 }
 
 ///////////////////////////////////////////////
-// --- DEFAULT/STEP DEFINITION - 'base/' --- //
+// --- defaults/STEP DEFINITION - 'root/' --- //
 ///////////////////////////////////////////////
-// Definitions for Default and Step sections, which both take the same inputs for different results.
+// Definitions for defaults and Step sections, which both take the same inputs for different results.
 
-// Takes all the same information as <step>, updating the default values of aspects not changed by individual Step definitons
-function tagToken_default(context: LessonParseTokenContext, parseResult: LessonParseResult) {
+// Takes all the same information as <step>, updating the defaults values of aspects not changed by individual Step definitons
+function tagToken_defaults(context: LessonParseTokenContext, parseResult: LessonParseResult) {
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Nest Level Requirement: base (no nesting)
-        if(context.thisNest.nestLevel != "base_nest") {
-            parseResult.warnings.push(newDebugMessage("Invalid positioning for Default tag: " + token + ". Steps cannot be nested in any other sections. This tag will be ignored.", context, 0));
+        // Nest Level Requirement: root (no nesting)
+        if(context.thisNest.nestLevel != "root") {
+            parseResult.warnings.push(newDebugMessage("Invalid positioning for defaults tag: " + token + ", found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. Defaults sections cannot be nested in any other sections. This tag will be ignored.", context, 0));
             return;
         }
 
         // Arguments Requirment: no args
         tagTokenHelper_noArgsGeneric(context, parseResult);
         
-        // [u] lack of steps between this and the previous default specification
-        if(context.thisNest.contents[context.thisNest.contents.length - 1] == "default") {
-            parseResult.suggestions.push(newDebugMessage("Multiple Default sections with no Steps defined in between detected. Consider merging these into one <default> section.", context, 0));
+        // [u] lack of steps between this and the previous defaults specification
+        if(context.thisNest.contents[context.thisNest.contents.length - 1] == "defaults") {
+            parseResult.suggestions.push(newDebugMessage("Multiple Defaults sections with no Steps defined in between detected. Consider merging these into one <defaults> section.", context, 0));
         }
 
         // Does not need to do anything more since the step subsections contain further logic
@@ -751,42 +854,42 @@ function tagToken_default(context: LessonParseTokenContext, parseResult: LessonP
             return; // ^ If true, tag needs to be ignored
         }
 
-        // [u] Empty Default section
+        // [u] Empty defaults section
         if(context.thisNest.contents.length == 0) {
-            parseResult.suggestions.push(newDebugMessage("Empty Default section detected. No changes to the Default Step were made.", context, 0));
+            parseResult.suggestions.push(newDebugMessage("Empty defaults section detected. No changes to the defaults Step were made.", context, 0));
         }
 
         context.currentNestLevels.pop(); // Remove nestLevel
     }
     // EXTRA MESSAGES IN END OF FILE CHECKS:
-    // - No steps beyond a default
+    // - No steps beyond a defaults
 }
 
 // Main enclosing section for a single step, taking a stepRef as an argument and containing all step subsections
-function tagToken_step(context: LessonParseTokenContext, parseResult: LessonParseResult) {
+function tagToken_step(stepAllSubsections: string[], context: LessonParseTokenContext, parseResult: LessonParseResult) {
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
     const totalSteps = parseResult.steps.length;
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // [u] Nest level is step already - likely forgotten closing tag from previous step
-        if(context.thisNest.nestLevel == "step") {
+        // [u] Nest level is either defaults or step - likely forgotten closing tag
+        if(context.thisNest.nestLevel == "step" || context.thisNest.nestLevel == "defaults") {
             if(context.config.CONTINUE_FROM_MISSING_CLOSER) {
-                parseResult.ERRORS.push(newDebugMessage("Likely missing Step closing tag </step>. All section-based tags, including Steps, must have a closer.", context, -1)); //TBC DOCUMENTATION: SECTIONS
+                parseResult.ERRORS.push(newDebugMessage("Likely missing closing tag </" + context.thisNest.nestLevel.split("_")[0] + ">. All section-based tags must have a closer.", context, -1)); //TBC DOCUMENTATION: SECTIONS
                 
                 // Attempts to resolve the issue by removing the step nestLevel and continuing. Only continues to scan for more errors for convenience.
                 context.currentNestLevels.pop();
                 context.thisNest = context.currentNestLevels[context.currentNestLevels.length - 1];
             }
             else {
-                parseResult.ERRORS.push(newDebugMessage("FATAL - Likely missing Step closing tag </step>. All section-based tags, including Steps, must have a closer.", context, -1)); //TBC DOCUMENTATION: SECTIONS
+                parseResult.ERRORS.push(newDebugMessage("FATAL - Likely missing closing tag </" + context.thisNest.nestLevel.split("_")[0] + ">. All section-based tags must have a closer.", context, -1)); //TBC DOCUMENTATION: SECTIONS
                 parseResult.success = false;
                 return;
             }
         }
 
-        // Nest Level Requirement: base (no nesting)
-        if(context.thisNest.nestLevel != "base_nest") {
-            parseResult.warnings.push(newDebugMessage("Invalid positioning for Step tag: " + token + ". Steps cannot be nested in any other sections. This tag will be ignored.", context, 0));
+        // Nest Level Requirement: root (no nesting)
+        if(context.thisNest.nestLevel != "root") {
+            parseResult.warnings.push(newDebugMessage("Invalid positioning for Step tag: " + token + ", found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. Steps cannot be nested in any other sections. This tag will be ignored.", context, 0));
             return;
         }
 
@@ -802,6 +905,7 @@ function tagToken_step(context: LessonParseTokenContext, parseResult: LessonPars
         // Arguments Requirment: at least 1 for stepRef
         if(context.tokenArgs.length == 1) {
             newStepRef = "Unnamed Step #" + (totalSteps + 1); // e.g. 'Unnamed Step #4'
+            context.stepRef = newStepRef; // Update for a more accurate error message
             parseResult.warnings.push(newDebugMessage("Step is missing a name. It is recommended to name each Step uniquely for more effective debugging. Current Step has been renamed to '" + newStepRef + "'.", context, 0));
         }
         else { // stepRef is present
@@ -817,15 +921,15 @@ function tagToken_step(context: LessonParseTokenContext, parseResult: LessonPars
         // [u] duplicate stepRefs
         for(let s = 0; s < parseResult.steps.length; s++) {
             if(newStepRef == parseResult.steps[s].stepRef) {
-                // Replace stepRef with default when a duplicate is found
+                // Replace stepRef with defaults when a duplicate is found
                 newStepRef = "Unnamed Step #" + (totalSteps + 1);
                 parseResult.warnings.push(newDebugMessage("Duplicate Step name, matching Step #" + (s + 1) + ": " + parseResult.steps[s].stepRef + ". Current Step has been renamed to '" + newStepRef + "'.", context, 0, "", ""));
                 break;
             }
         }
         
-        // Append the new step as a copy of defaultStep with the new stepRef
-        const newStep = structuredClone(context.defaultStepTemplate); // Uses structuredClone to ensure new copies of object array attributes are created, for example the requirements list.
+        // Append the new step as a copy of defaultsStep with the new stepRef
+        const newStep = structuredClone(context.defaultsStepTemplate); // Uses structuredClone to ensure new copies of object array attributes are created, for example the requirements list.
         newStep.stepRef = newStepRef; // Assign the new stepRef
         newStep.sourceLineNum = context.lineNum; // Remember this source line num for use in Test Mode's Debug Modal
         parseResult.steps.push(newStep);
@@ -839,9 +943,14 @@ function tagToken_step(context: LessonParseTokenContext, parseResult: LessonPars
             return; // ^ If true, tag needs to be ignored
         }
 
+        // [u] Check for missing closing tags of step-specific subsections
+        if(tagTokenHelper_subsectionMissingCloserCheck(stepAllSubsections, context, parseResult)) {
+            return true;
+        }
+
         // [u] steps should have custom text as a minimum
         if(parseResult.steps[totalSteps - 1].textContent == context.config.PLACEHOLDER_TEXT || parseResult.steps[totalSteps - 1].textContent == "") {
-            parseResult.ERRORS.push(newDebugMessage("Step is missing valid text content. Ensure either the step has a non-empty <text> section, or that one is specified in <default>.", context, 0)); //TBC DOCUMENTATION: TEXT
+            parseResult.ERRORS.push(newDebugMessage("Step is missing valid text content. Ensure that every the step has a non-empty <text> section.", context, 0)); //TBC DOCUMENTATION: TEXT
         }
 
         context.currentNestLevels.pop(); // Remove nestLevel
@@ -852,21 +961,27 @@ function tagToken_step(context: LessonParseTokenContext, parseResult: LessonPars
 }
 
 /////////////////////////////////////////////
-// --- STEP SUBSECTIONS - 'base/step/' --- //
+// --- STEP SUBSECTIONS - 'root/step/' --- //
 /////////////////////////////////////////////
 // All main subsections in a single step, grouping its respective data accordingly
 
-// Attributes subsection for specifying most data about a specific step / default
+// Attributes subsection for specifying most data about a specific step / defaults
 function tagToken_attributes(stepAllSubsections: string[], context: LessonParseTokenContext, parseResult: LessonParseResult) {
     //const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Step subsection default requirements
+        // [u] Nested inside a <defaults>, which is not required and not advised either
+        if(context.thisNest.nestLevel == "defaults") {
+            parseResult.warnings.push(newDebugMessage("Defaults sections do not require a nested Attributes section inside them. Individual Attributes should be written directly inside the Defaults section. This tag will be ignored.", context, 0));
+            return;
+        }
+
+        // Step subsection defaults requirements
         if(tagTokenHelper_stepSubsections(stepAllSubsections, context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
 
-        context.thisNest.contents.push(context.tokenArgs[0]); // Add attributes to the parent nest step/default
+        context.thisNest.contents.push(context.tokenArgs[0]); // Add attributes to the parent nest step/defaults
         context.currentNestLevels.push({nestLevel: context.tokenArgs[0], contents: []});
     }
     else { // closer tag
@@ -875,7 +990,7 @@ function tagToken_attributes(stepAllSubsections: string[], context: LessonParseT
             return; // ^ If true, tag needs to be ignored
         }
 
-        /* This case seems more annoying than useful - most programmers will likely copy and paste a step template with an attributes section, even for steps with no changes from default.
+        /* This case seems more annoying than useful - most programmers will likely copy and paste a step template with an attributes section, even for steps with no changes from defaults.
         // [u] Empty attributes section
         if(context.thisNest.contents.length == 0) {
             parseResult.warnings.push(newDebugMessage("Step Attributes section has no content.", context, 0));
@@ -890,12 +1005,12 @@ function tagToken_hintList(stepAllSubsections: string[], context: LessonParseTok
     //const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Step subsection default requirements
+        // Step subsection defaults requirements
         if(tagTokenHelper_stepSubsections(stepAllSubsections, context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
 
-        context.thisNest.contents.push(context.tokenArgs[0]); // Add attributes to the parent nest step/default
+        context.thisNest.contents.push(context.tokenArgs[0]); // Add attributes to the parent nest step/defaults
         context.currentNestLevels.push({nestLevel: context.tokenArgs[0], contents: []});
     }
     else { // closer tag
@@ -915,12 +1030,12 @@ function tagToken_requirements(stepAllSubsections: string[], context: LessonPars
     //const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Step subsection default requirements
+        // Step subsection defaults requirements
         if(tagTokenHelper_stepSubsections(stepAllSubsections, context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
 
-        context.thisNest.contents.push(context.tokenArgs[0]); // Add attributes to the parent nest step/default
+        context.thisNest.contents.push(context.tokenArgs[0]); // Add attributes to the parent nest step/defaults
         context.currentNestLevels.push({nestLevel: context.tokenArgs[0], contents: []});
     }
     else { // closer tag
@@ -941,7 +1056,7 @@ function tagToken_text(stepAllSubsections: string[], context: LessonParseTokenCo
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Step subsection default requirements
+        // Step subsection defaults requirements
         if(tagTokenHelper_stepSubsections(stepAllSubsections, context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -965,9 +1080,9 @@ function tagToken_text(stepAllSubsections: string[], context: LessonParseTokenCo
     }
 }
 
-// Covers the base requirements subsections for steps/defaults, making use of a list of all possible subsections.
+// Covers the base requirements subsections for steps/defaultss, making use of a list of all possible subsections.
 // - Checks for potentially missing closing tags from other step subsections
-// - Nest level is step or default
+// - Nest level is step or defaults
 // - No arguments
 // - Uniqueness (depends on settings context)
 function tagTokenHelper_stepSubsections(stepSubsections: string[], context: LessonParseTokenContext, parseResult: LessonParseResult) : boolean {
@@ -981,14 +1096,14 @@ function tagTokenHelper_stepSubsections(stepSubsections: string[], context: Less
         return true;
     }
     
-    // Nest Level Requirement: step or default
-    if(context.thisNest.nestLevel != "step" && context.thisNest.nestLevel != "default") {
+    // Nest Level Requirement: step or defaults
+    if(context.thisNest.nestLevel != "step") {
         // Unique message for text due to it also being valid within <hint>
         if(context.tokenArgs[0] == "text") {
-            parseResult.warnings.push(newDebugMessage("Invalid positioning for Text subsection tag: <" + context.tokenArgs.join(" ") + ">. Text subsections can only be placed within <step>, <default>, or <hint> subsections. If you are trying to write a comment, use <#></#>. This tag will be ignored.", context, 0));
+            parseResult.warnings.push(newDebugMessage("Invalid positioning for Text subsection tag: <" + context.tokenArgs.join(" ") + ">, found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. Text subsections can only be placed within <step> or <hint> subsections. If you are trying to write a comment, use <#></#>. This tag will be ignored.", context, 0));
         }
         else {
-            parseResult.warnings.push(newDebugMessage("Invalid positioning for Step subsection tag: <" + context.tokenArgs.join(" ") + ">. Step subsections should only be contained within the <default> section or individual Steps. This tag will be ignored.", context, 0));
+            parseResult.warnings.push(newDebugMessage("Invalid positioning for Step subsection tag: <" + context.tokenArgs.join(" ") + ">, found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. Step subsections should only be contained within a <step> section. This tag will be ignored.", context, 0));
         }
         return true;
     }
@@ -1012,16 +1127,16 @@ function tagTokenHelper_stepSubsections(stepSubsections: string[], context: Less
 }
 
 ///////////////////////////////////////////////////////
-// --- STEP ATTRIBUTES - 'base/step/attributes/' --- //
+// --- STEP ATTRIBUTES - 'root/step/attributes/' --- //
 ///////////////////////////////////////////////////////
 // All contents inside the Attributes section, being argument-based tags that modify data about steps.
 
 // Attribute to determine the colour scheme of a step panel.
 function tagToken_colourScheme(context: LessonParseTokenContext, parseResult: LessonParseResult) {
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
-    const currentStep = (context.rootNest.nestLevel == "step" || (context.thisNest.nestLevel == "step" && context.config.ALLOW_ATTRIBUTES_IN_STEP_NEST))
-        ? parseResult.steps[parseResult.steps.length - 1]   // this tag is inside the most recent <step>
-        : context.defaultStepTemplate;                      // this tag is inside <default>
+    const currentStep = (context.thisNest.nestLevel == "defaults")
+        ? context.defaultsStepTemplate                     // this tag is inside <defaults>
+        : parseResult.steps[parseResult.steps.length - 1]; // this tag is inside the most recent <step> (unless the placement is invalid)
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
         // Basic nest level and uniqueness requirements for fixed argument attributes
@@ -1035,10 +1150,8 @@ function tagToken_colourScheme(context: LessonParseTokenContext, parseResult: Le
         }
 
         // [u] Unknown argument which does not match any valid inputs
-        const validColourSchemes = 
-            ["red", "orange", "green", "blue", "pink", "monochrome"];
-        if(!validColourSchemes.includes(context.tokenArgs[1].toLowerCase())) {
-            parseResult.warnings.push(newDebugMessage("Unknown Colour Scheme argument: " + token + ". Refer to the documentation for a list of valid arguments. This tag will be ignored and the Step will keep its default Colour Scheme.", context, 0));
+        if(!fetchValidParameters("colour-scheme").includes(context.tokenArgs[1].toLowerCase())) {
+            parseResult.warnings.push(newDebugMessage("Unknown Colour Scheme argument: " + token + ". Refer to the documentation for a list of valid arguments. This tag will be ignored and the Step will keep its defaults Colour Scheme.", context, 0));
             return;
         }
         
@@ -1048,16 +1161,16 @@ function tagToken_colourScheme(context: LessonParseTokenContext, parseResult: Le
     }
     else { // closer tag
         // This tag type has no need for a closer tag, and therefore is disregarded
-        parseResult.warnings.push(newDebugMessage("Unnecessary closing tag detected: " + token + ". This tag type does not require a closer. The closer tag will be ignored.", context, 0));
+        tagTokenHelper_noCloseTagNeeded(context, parseResult);
     }
 }
 
 // Boolean Attribute defining whether the Requirement Message popover should hide the expected value.
 function tagToken_hideExpectedValues(context: LessonParseTokenContext, parseResult: LessonParseResult) {
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
-    const currentStep = (context.rootNest.nestLevel == "step" || (context.thisNest.nestLevel == "step" && context.config.ALLOW_ATTRIBUTES_IN_STEP_NEST))
-        ? parseResult.steps[parseResult.steps.length - 1]   // this tag is inside the most recent <step>
-        : context.defaultStepTemplate;                      // this tag is inside <default>
+    const currentStep = (context.thisNest.nestLevel == "defaults")
+        ? context.defaultsStepTemplate                     // this tag is inside <defaults>
+        : parseResult.steps[parseResult.steps.length - 1]; // this tag is inside the most recent <step> (unless the placement is invalid)
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
         // Basic nest level and uniqueness requirements for fixed argument attributes
@@ -1074,7 +1187,7 @@ function tagToken_hideExpectedValues(context: LessonParseTokenContext, parseResu
         }
         else if(context.tokenArgs[1].toLowerCase() == "false") {
             if(!currentStep.hideRequirementExpectedValues) {
-                parseResult.suggestions.push(newDebugMessage("Unnecessary boolean attribute tag: " + token + ". This tag is paired to a value that was already false. Boolean argument attributes are false by default.", context, 0));
+                parseResult.suggestions.push(newDebugMessage("Unnecessary boolean attribute tag: " + token + ". This tag is paired to a value that was already false. Boolean argument attributes are false by defaults.", context, 0));
             }
             currentStep.hideRequirementExpectedValues = false;
         }
@@ -1082,8 +1195,8 @@ function tagToken_hideExpectedValues(context: LessonParseTokenContext, parseResu
         context.thisNest.contents.push(context.tokenArgs[0]); // Add to the parent nest
     }
     else { // closer tag
-        // This tag type has no need for a closer tag, and therefore is disregarded (special extra info about boolean attributes)
-        parseResult.warnings.push(newDebugMessage("Unnecessary closing tag detected: " + token + ". This tag type does not require a closer. If you are trying to set this value to false, type '<" + context.tokenArgs[0] + " false>'. The closer tag will be ignored.", context, 0));
+        // This tag type has no need for a closer tag, and therefore is disregarded
+        tagTokenHelper_noCloseTagNeeded(context, parseResult);
     }
     // EXTRA MESSAGES IN STEP CLOSER CHECKS:
     // - No hints to make up for hidden guidance
@@ -1092,9 +1205,9 @@ function tagToken_hideExpectedValues(context: LessonParseTokenContext, parseResu
 // Attribute to determine the panel type of a step (where the panel is displayed in the editor)
 function tagToken_panelType(context: LessonParseTokenContext, parseResult: LessonParseResult) {
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
-    const currentStep = (context.rootNest.nestLevel == "step" || (context.thisNest.nestLevel == "step" && context.config.ALLOW_ATTRIBUTES_IN_STEP_NEST))
-        ? parseResult.steps[parseResult.steps.length - 1]   // this tag is inside the most recent <step>
-        : context.defaultStepTemplate;                      // this tag is inside <default>
+    const currentStep = (context.thisNest.nestLevel == "defaults")
+        ? context.defaultsStepTemplate                     // this tag is inside <defaults>
+        : parseResult.steps[parseResult.steps.length - 1]; // this tag is inside the most recent <step> (unless the placement is invalid)
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
         // Basic nest level and uniqueness requirements for fixed argument attributes
@@ -1117,7 +1230,7 @@ function tagToken_panelType(context: LessonParseTokenContext, parseResult: Lesso
 
         // [u] Unknown argument which does not match any of the keywords above
         if(!panelArgMap[context.tokenArgs[1].toLowerCase()]) {
-            parseResult.warnings.push(newDebugMessage("Unknown Panel Type argument: " + token + ". Refer to the documentation for a list of valid arguments. This tag will be ignored and the Step will keep its default Panel Type.", context, 0));
+            parseResult.warnings.push(newDebugMessage("Unknown Panel Type argument: " + token + ". Refer to the documentation for a list of valid arguments. This tag will be ignored and the Step will keep its defaults Panel Type.", context, 0));
             return;
         }
         
@@ -1127,10 +1240,11 @@ function tagToken_panelType(context: LessonParseTokenContext, parseResult: Lesso
     }
     else { // closer tag
         // This tag type has no need for a closer tag, and therefore is disregarded
-        parseResult.warnings.push(newDebugMessage("Unnecessary closing tag detected: " + token + ". This tag type does not require a closer. The closer tag will be ignored.", context, 0));
+        tagTokenHelper_noCloseTagNeeded(context, parseResult);
     }
     // EXTRA MESSAGES IN STEP CLOSER CHECKS:
     // - Size incompatability with too much text for certain panel types
+    // - central-focus type should not allow requirements due to it covering the editor
 }
 
 // Covers the base requirements for unique step attributes that take an argument:
@@ -1138,20 +1252,20 @@ function tagToken_panelType(context: LessonParseTokenContext, parseResult: Lesso
 // - Only one of this attribute specification within the current step.
 // Returns 'true' when evaluateTagToken() needs to return early (ignore the tag).
 function tagTokenHelper_stepAttributeNestUnique(context: LessonParseTokenContext, parseResult: LessonParseResult) : boolean {
-    // Nest Level Requirement: attributes, or just default/step if ALLOW_ATTRIBUTES_IN_STEP_NEST == true.
-    if(context.thisNest.nestLevel != "attributes") {
-        if(context.config.ALLOW_ATTRIBUTES_IN_STEP_NEST && (context.thisNest.nestLevel == "default" || context.thisNest.nestLevel == "step")) {
+    // Nest Level Requirement: defaults, attributes, or just step if ALLOW_ATTRIBUTES_IN_STEP_NEST == true.
+    if(context.thisNest.nestLevel != "attributes" && context.thisNest.nestLevel != "defaults") {
+        if(context.config.ALLOW_ATTRIBUTES_IN_STEP_NEST && context.thisNest.nestLevel == "step") {
             parseResult.suggestions.push(newDebugMessage("Unnested Attribute tag: <" + context.tokenArgs.join(" ") + ">. For better code organisation, consider grouping all Attribute tags within the <attributes> section.", context, 0, "", ""));
         }
         else {
-            parseResult.warnings.push(newDebugMessage("Invalid positioning for Attribute tag: <" + context.tokenArgs.join(" ") + ">. Attributes should be stored within a Step's <attributes> section. This tag will be ignored.", context, 0, "", ""));
+            parseResult.warnings.push(newDebugMessage("Invalid positioning for Attribute tag: <" + context.tokenArgs.join(" ") + ">, found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. Attributes should be stored within a Step's <attributes> section. This tag will be ignored.", context, 0, "", ""));
             return true;
         }
     }
 
-    // Uniqueness Requirement: one per parent section. Also checks the root nest (step/default) in case attributes were validly placed outside of the <attributes> section.
-    if(context.thisNest.contents.includes(context.tokenArgs[0]) || context.rootNest.contents.includes(context.tokenArgs[0])) {
-        parseResult.warnings.push(newDebugMessage("Multiple instances of Attribute tag within one step: <" + context.tokenArgs[0] + ">. Only the first valid instance of an Attribute tag will be used. This tag will be ignored.", context, 0)); //TBC DOCUMENTATION: ATTRIBUTES
+    // Uniqueness Requirement: one per parent section. Also checks the step in case attributes were validly placed outside of the <attributes> section.
+    if(context.thisNest.contents.includes(context.tokenArgs[0]) || context.currentNestLevels[1].contents.includes(context.tokenArgs[0])) {
+        parseResult.warnings.push(newDebugMessage("Multiple instances of Attribute tag within one section: <" + context.tokenArgs[0] + ">. Only the first valid instance of an Attribute tag will be used. This tag will be ignored.", context, 0)); //TBC DOCUMENTATION: ATTRIBUTES
         return true;
     }
 
@@ -1172,16 +1286,14 @@ function tagTokenHelper_stepAttributeBooleanArguments(context: LessonParseTokenC
 }
 
 /////////////////////////////////////////////
-// --- STEP HINTS - 'base/step/hints/' --- //
+// --- STEP HINTS - 'root/step/hints/' --- //
 /////////////////////////////////////////////
 // Guidance messages that activate based on specified requirements (requirements found in the next section)
 
 // Main enclosing section for a single step, taking a stepRef as an argument and containing all step subsections
 function tagToken_hint(context: LessonParseTokenContext, parseResult: LessonParseResult) {
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
-    const currentStep = (context.rootNest.nestLevel == "step" || (context.thisNest.nestLevel == "step" && context.config.ALLOW_HINTS_IN_STEP_NEST))
-        ? parseResult.steps[parseResult.steps.length - 1]   // this tag is inside the most recent <step>
-        : context.defaultStepTemplate;                      // this tag is inside <default>
+    const currentStep = parseResult.steps[parseResult.steps.length - 1];
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
         // [u] Nest level is hint already - likely forgotten closing tag from previous hint
@@ -1202,21 +1314,21 @@ function tagToken_hint(context: LessonParseTokenContext, parseResult: LessonPars
 
         // Nest Level Requirement: hint-list, or step if allowed
         if(context.thisNest.nestLevel != "hint-list") {
-            if((context.thisNest.nestLevel == "step" || context.thisNest.nestLevel == "default") && context.config.ALLOW_HINTS_IN_STEP_NEST) {
+            if(context.thisNest.nestLevel == "step" && context.config.ALLOW_HINTS_IN_STEP_NEST) {
                 // Hint is valid in this case, but when there's more than one hint in a step, a suggestion to group them is given.
                 if(currentStep.hints.length > 0) {
                     parseResult.suggestions.push(newDebugMessage("Consider grouping multiple Hints within one Step into a <hint-list> section for better code organisation.", context, 0));
                 }
             }
             else {
-                parseResult.warnings.push(newDebugMessage("Invalid positioning for Hint tag: " + token + ". Hints should be nested inside a Step's <hint-list> section. This tag will be ignored.", context, 0));
+                parseResult.warnings.push(newDebugMessage("Invalid positioning for Hint tag: " + token + ", found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. Hints should be nested inside a Step's <hint-list> section. This tag will be ignored.", context, 0));
                 return;
             }
         }
 
         // [u] Maximum amount of hints in one step
         if(currentStep.hints.length >= context.config.MAX_HINTS_PER_STEP) {
-            parseResult.ERRORS.push(newDebugMessage("Maximum Hints for one Step reached. Steps are limited to " + context.config.MAX_HINTS_PER_STEP + " total Hints. Consider merging some Hints together or spreading them across multiple Steps. All further <hint> tags in this Step will be ignored.", context, 0)); //TBC DOCUMENTATION: GENERAL LESSON RULES?
+            parseResult.warnings.push(newDebugMessage("Maximum Hints for one Step reached. Steps are limited to " + context.config.MAX_HINTS_PER_STEP + " total Hints. Consider merging some Hints together or spreading them across multiple Steps. All further <hint> tags in this Step will be ignored.", context, 0)); //TBC DOCUMENTATION: GENERAL LESSON RULES?
             return;
         }
 
@@ -1240,7 +1352,7 @@ function tagToken_hint(context: LessonParseTokenContext, parseResult: LessonPars
 
         // [u] hints should have custom message as a minimum
         if(currentStep.hints[currentStep.hints.length - 1].message == context.config.PLACEHOLDER_TEXT || currentStep.hints[currentStep.hints.length - 1].message == "") {
-            parseResult.ERRORS.push(newDebugMessage("Hint is missing valid message content. Ensure either the hint has a non-empty <message> section. This section will be ignored.", context, 0)); //TBC DOCUMENTATION: MESSAGE
+            parseResult.warnings.push(newDebugMessage("Hint is missing valid message content. Ensure either the hint has a non-empty <message> section. This hint section will be ignored.", context, 0)); //TBC DOCUMENTATION: MESSAGE
             currentStep.hints.pop(); // Delete empty hint
         }
 
@@ -1331,25 +1443,23 @@ function tagToken_text_inHint(context: LessonParseTokenContext, parseResult: Les
 }
 
 ////////////////////////////////////////////////////////////////
-// --- STEP/HINT REQUIREMENTS - 'base/step/requirements/' --- // TBC: REQUIREMENT LIMITS
+// --- STEP/HINT REQUIREMENTS - 'root/step/requirements/' --- // TBC: REQUIREMENT LIMITS
 ////////////////////////////////////////////////////////////////
 // Different types of Requirements that must be fulfilled to proceed to the next step (or to show a hint if used in a <hint> section)
 
 // Failed Attempts Requirement for hints. Makes a hint display after a certain amount of failed attempts to go to the next step (from other unfulfilled requirements)
 function tagToken_failedAttempts(context: LessonParseTokenContext, parseResult: LessonParseResult) {
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
-    const currentStep = (context.rootNest.nestLevel == "step" || (context.thisNest.nestLevel == "step" && context.config.ALLOW_REQUIREMENTS_IN_STEP_NEST))
-        ? parseResult.steps[parseResult.steps.length - 1]   // this tag is inside the most recent <step>
-        : context.defaultStepTemplate;                      // this tag is inside <default>
+    const currentStep = parseResult.steps[parseResult.steps.length - 1];
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
         // Nest Level Requirement: ONLY hint. This requirement type is not allowed to be used on steps.
         if(context.thisNest.nestLevel != "hint" && context.thisNest.nestLevel != "requirements_inHint") {
             if(context.thisNest.nestLevel == "requirements" || (context.thisNest.nestLevel == "step" && context.config.ALLOW_REQUIREMENTS_IN_STEP_NEST)) {
-                parseResult.warnings.push(newDebugMessage("Invalid positioning for Requirement tag: <" + context.tokenArgs[0] + ">. This Requirement type is not allowed to be used for Steps. It can only be placed inside a <hint> section for conditionally displaying Hints. This tag will be ignored.", context, 0, "", ""));
+                parseResult.warnings.push(newDebugMessage("Invalid positioning for Requirement tag: <" + context.tokenArgs[0] + ">, found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. This Requirement type is not allowed to be used for Steps. It can only be placed inside a <hint> section for conditionally displaying Hints. This tag will be ignored.", context, 0, "", ""));
             }
             else {
-                parseResult.warnings.push(newDebugMessage("Invalid positioning for Requirement tag: <" + context.tokenArgs[0] + ">. This Requirement type can only be placed inside a <hint> section for conditionally displaying Hints. This tag will be ignored.", context, 0));
+                parseResult.warnings.push(newDebugMessage("Invalid positioning for Requirement tag: <" + context.tokenArgs[0] + ">, found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. This Requirement type can only be placed inside a <hint> section for conditionally displaying Hints. This tag will be ignored.", context, 0));
             }
             return;
         }
@@ -1380,6 +1490,12 @@ function tagToken_failedAttempts(context: LessonParseTokenContext, parseResult: 
             return;
         }
 
+        // [u] Maximum requirements check
+        if(currentStep.hints[currentStep.hints.length - 1].requirements.length == context.config.MAX_REQUIREMENTS_PER_HINT) {
+            parseResult.warnings.push(newDebugMessage("Maximum Hint Requirements reached at " + token + "Hints are limited to " + context.config.MAX_REQUIREMENTS_PER_HINT + " Requirements at most. This tag will be ignored.", context, 0));
+            return;
+        }
+
         // Create the Requirement (guaranteed to be hint)
         currentStep.hints[currentStep.hints.length - 1].requirements.push({
             reqType: StepRequirementType.FAILED_ATTEMPTS, 
@@ -1387,11 +1503,11 @@ function tagToken_failedAttempts(context: LessonParseTokenContext, parseResult: 
             numValue: Number(context.tokenArgs[1]),
         });
 
-        context.thisNest.contents.push(context.tokenArgs[0]); // Add to the parent nest step/default
+        context.thisNest.contents.push(context.tokenArgs[0]); // Add to the parent nest step/defaults
     }
     else { // closer tag
         // This tag type has no need for a closer tag, and therefore is disregarded
-        parseResult.warnings.push(newDebugMessage("Unnecessary closing tag detected: " + token + ". This tag type does not require a closer. The closer tag will be ignored.", context, 0));
+        tagTokenHelper_noCloseTagNeeded(context, parseResult);
     }
     // EXTRA MESSAGES IN STEP CLOSER CHECKS:
     // - No step requirements to trigger this
@@ -1400,9 +1516,7 @@ function tagToken_failedAttempts(context: LessonParseTokenContext, parseResult: 
 // Run Code Requirement, needing the user to click the run code button before progressing
 function tagToken_runCode(context: LessonParseTokenContext, parseResult: LessonParseResult) {
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
-    const currentStep = (context.rootNest.nestLevel == "step" || (context.thisNest.nestLevel == "step" && context.config.ALLOW_REQUIREMENTS_IN_STEP_NEST))
-        ? parseResult.steps[parseResult.steps.length - 1]   // this tag is inside the most recent <step>
-        : context.defaultStepTemplate;                      // this tag is inside <default>
+    const currentStep = parseResult.steps[parseResult.steps.length - 1];
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
         // Nest Level Requirement: requirements, hint, or step if allowed
@@ -1421,12 +1535,24 @@ function tagToken_runCode(context: LessonParseTokenContext, parseResult: LessonP
 
         // Create the Requirement
         if(context.thisNest.nestLevel == "hint" || context.thisNest.nestLevel == "requirements_inHint") {
+            // [u] Maximum requirements check (hint)
+            if(currentStep.hints[currentStep.hints.length - 1].requirements.length == context.config.MAX_REQUIREMENTS_PER_HINT) {
+                parseResult.warnings.push(newDebugMessage("Maximum Hint Requirements reached at " + token + ". Hints are limited to " + context.config.MAX_REQUIREMENTS_PER_HINT + " Requirements at most. This tag will be ignored.", context, 0));
+                return;
+            }
+
             currentStep.hints[currentStep.hints.length - 1].requirements.push({
                 reqType: StepRequirementType.RUN_CODE, 
                 needed: false,
             });
         }
         else { // nest = requirements or step
+            // [u] Maximum requirements check (step)
+            if(currentStep.requirements.length == context.config.MAX_REQUIREMENTS_PER_STEP) {
+                parseResult.warnings.push(newDebugMessage("Maximum Step Requirements reached at " + token + ". Steps are limited to " + context.config.MAX_REQUIREMENTS_PER_STEP + " Requirements at most. This tag will be ignored.", context, 0));
+                return;
+            }
+
             currentStep.requirements.push({
                 reqType: StepRequirementType.RUN_CODE, 
                 needed: false,
@@ -1434,23 +1560,22 @@ function tagToken_runCode(context: LessonParseTokenContext, parseResult: LessonP
             });
         }
 
-        context.thisNest.contents.push(context.tokenArgs[0]); // Add to the parent nest step/default
+        context.thisNest.contents.push(context.tokenArgs[0]); // Add to the parent nest step/defaults
     }
     else { // closer tag
         // This tag type has no need for a closer tag, and therefore is disregarded
-        parseResult.warnings.push(newDebugMessage("Unnecessary closing tag detected: " + token + ". This tag type does not require a closer. The closer tag will be ignored.", context, 0));
+        tagTokenHelper_noCloseTagNeeded(context, parseResult);
     }
 }
 
 // Time Passed Requirement, needing the user to spend a certain amount of seconds on a step
 function tagToken_timePassed(context: LessonParseTokenContext, parseResult: LessonParseResult) {
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
-    const currentStep = (context.rootNest.nestLevel == "step" || (context.thisNest.nestLevel == "step" && context.config.ALLOW_REQUIREMENTS_IN_STEP_NEST))
-        ? parseResult.steps[parseResult.steps.length - 1]   // this tag is inside the most recent <step>
-        : context.defaultStepTemplate;                      // this tag is inside <default>
+    const currentStep = parseResult.steps[parseResult.steps.length - 1];
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
         // Nest Level Requirement: requirements, hint, or step if allowed
+        tagTokenHelper_similarTagSuggestion(["metadata"], "estimated-time", context, parseResult, "", ""); //TBC DOCUMENTATION: TIME PASSED
         if(tagTokenHelper_requirementNestLevel(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1483,6 +1608,12 @@ function tagToken_timePassed(context: LessonParseTokenContext, parseResult: Less
 
         // Create the Requirement
         if(context.thisNest.nestLevel == "hint" || context.thisNest.nestLevel == "requirements_inHint") {
+            // [u] Maximum requirements check (hint)
+            if(currentStep.hints[currentStep.hints.length - 1].requirements.length == context.config.MAX_REQUIREMENTS_PER_HINT) {
+                parseResult.warnings.push(newDebugMessage("Maximum Hint Requirements reached at " + token + ". Hints are limited to " + context.config.MAX_REQUIREMENTS_PER_HINT + " Requirements at most. This tag will be ignored.", context, 0));
+                return;
+            }
+
             currentStep.hints[currentStep.hints.length - 1].requirements.push({
                 reqType: StepRequirementType.TIME_PASSED, 
                 needed: false,
@@ -1490,6 +1621,12 @@ function tagToken_timePassed(context: LessonParseTokenContext, parseResult: Less
             });
         }
         else { // nest = requirements or step
+            // [u] Maximum requirements check (step)
+            if(currentStep.requirements.length == context.config.MAX_REQUIREMENTS_PER_STEP) {
+                parseResult.warnings.push(newDebugMessage("Maximum Step Requirements reached at " + token + ". Steps are limited to " + context.config.MAX_REQUIREMENTS_PER_STEP + " Requirements at most. This tag will be ignored.", context, 0));
+                return;
+            }
+
             currentStep.requirements.push({
                 reqType: StepRequirementType.TIME_PASSED, 
                 needed: false,
@@ -1497,11 +1634,11 @@ function tagToken_timePassed(context: LessonParseTokenContext, parseResult: Less
             });
         }
 
-        context.thisNest.contents.push(context.tokenArgs[0]); // Add to the parent nest step/default
+        context.thisNest.contents.push(context.tokenArgs[0]); // Add to the parent nest step/defaults
     }
     else { // closer tag
         // This tag type has no need for a closer tag, and therefore is disregarded
-        parseResult.warnings.push(newDebugMessage("Unnecessary closing tag detected: " + token + ". This tag type does not require a closer. The closer tag will be ignored.", context, 0));
+        tagTokenHelper_noCloseTagNeeded(context, parseResult);
     }
 }
 
@@ -1514,7 +1651,7 @@ function tagTokenHelper_requirementNestLevel(context: LessonParseTokenContext, p
             parseResult.suggestions.push(newDebugMessage("Unnested Requirement tag: <" + context.tokenArgs.join(" ") + ">. This Requirement will be assumed as a Step Requirement. For better code organisation, consider grouping all Requirement tags within the <requirements> section.", context, 0, "", ""));
         }
         else {
-            parseResult.warnings.push(newDebugMessage("Invalid positioning for Requirement tag: <" + context.tokenArgs[0] + ">. Requirements are assigned within a Step's <requirements> section, or inside a <hint> section to assign it to that Hint. This tag will be ignored.", context, 0));
+            parseResult.warnings.push(newDebugMessage("Invalid positioning for Requirement tag: <" + context.tokenArgs[0] + ">, found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. Requirements are assigned within a Step's <requirements> section, or inside a <hint> section to assign it to that Hint. This tag will be ignored.", context, 0));
             return true;
         }
     }
