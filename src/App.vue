@@ -79,7 +79,7 @@
                             is dependant on the type of panel that the current step is using. -->
                         <div v-if="getLessonBeingRun && !isStepPanelTypeFullscreenFocus" class="step-panel-editor-sizing-wrapper">
                             <div :class="getStepPanelTypeClass"> 
-                                <LessonPanel />
+                                <LessonStepPanel />
                             </div>
                         </div>
                     </Pane>
@@ -107,11 +107,10 @@
                 </div>
             </ModalDlg>
         </div>
-        <!-- TBC: Condition here VVV -->
         <div v-if="getLessonBeingRun && isStepPanelTypeFullscreenFocus"> <!-- Central Step Panel that dims the background for focus -->
             <div class="lesson-darkened-background-full" />
             <div class="step-panel-editor-centre-highlighted">
-                <LessonPanel />
+                <LessonStepPanel />
             </div>
         </div>
     </div>
@@ -157,7 +156,8 @@ import axios from "axios";
 import scssVars from "@/assets/style/_export.module.scss";
 import {loadDivider} from "@/helpers/load-save";
 import FrameHeader from "@/components/FrameHeader.vue";
-import LessonPanel from "@/components/LessonPanel.vue";
+import { stopCurrentLesson } from "./helpers/runningLessonHandler";
+import LessonStepPanel from "@/components/LessonStepPanel.vue";
 
 let autoSaveTimerId = -1;
 let projectSaveFunctionsState : ProjectSaveFunction[] = [];
@@ -181,7 +181,7 @@ export default Vue.extend({
         SimpleMsgModalDlg,
         Splitpanes,
         Pane,
-        LessonPanel,
+        LessonStepPanel,
     },
 
     data: function() {
@@ -357,12 +357,12 @@ export default Vue.extend({
                 [StepPanelType.FULLSCREEN_FOCUS_MODAL]: "", //This type is rendered in a seperate div, and is therefore not handled here.
             };
 
-            return panelClassMap[this.appStore.getCurrentStepAttributes.panelType] ?? "";
+            return panelClassMap[this.appStore.getCurrentStepAttributes.attributes.panelType] ?? "";
         },
 
         //Panel type that is rendered in its own div
         isStepPanelTypeFullscreenFocus(): boolean {
-            return this.appStore.getCurrentStepAttributes.panelType == StepPanelType.FULLSCREEN_FOCUS_MODAL;
+            return this.appStore.getCurrentStepAttributes.attributes.panelType == StepPanelType.FULLSCREEN_FOCUS_MODAL;
         },
     },
 
@@ -524,8 +524,9 @@ export default Vue.extend({
                 return;
             }
             
+            // [Lessons System edit: added a condition to check if the Create New Lesson Dlg is open, since this func is blocking the ability to copy text in the text editor.]
             // If we are at a frame cursor and they hit ctrl-x/ctrl-c then we do cut/copy:
-            if(!this.appStore.isEditing && !this.isPythonExecuting && (event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === "c" || event.key.toLowerCase() === "x")) {
+            if(!this.appStore.isEditing && !this.isPythonExecuting && (event.ctrlKey || event.metaKey) && (event.key.toLowerCase() === "c" || event.key.toLowerCase() === "x") && this.appStore.currentModalDlgId != "create-new-strype-lesson-modal-dlg") {
                 // We emit an event to be picked up by the first frame in the current selection:
                 // The frames themselves decide whether to act based on whether they are the first frame in the selection:
                 this.$root.$emit(event.key.toLowerCase() === "c" ? CustomEventTypes.copyFrameSelection : CustomEventTypes.cutFrameSelection);
@@ -535,7 +536,8 @@ export default Vue.extend({
                 return;
             }
             
-            if (!this.appStore.isEditing && !this.isPythonExecuting && !event.ctrlKey && !event.metaKey && event.key === ".") {
+            // [Lessons System edit: added a condition to check if the Create New Lesson Dlg is open, since this func is blocking the ability to type a . in the text editor.]
+            if (!this.appStore.isEditing && !this.isPythonExecuting && !event.ctrlKey && !event.metaKey && event.key === "." && this.appStore.currentModalDlgId != "create-new-strype-lesson-modal-dlg") {
                 // The relevant frames are the selection, or otherwise the frame *after* the caret:
                 let frameIds: number[] = [];
                 if (this.appStore.selectedFrames.length > 0) {
@@ -1478,6 +1480,9 @@ export default Vue.extend({
                             resolve();
                         }
                     );
+
+                    // Lesson File addition: upon loading a new file, stop the current Lesson
+                    stopCurrentLesson();
                     
                     // Check for errors (could be that we loaded something with blanks or syntax errors):
                     this.$nextTick(() => checkCodeErrors());                    

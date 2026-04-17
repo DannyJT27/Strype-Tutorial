@@ -1,9 +1,9 @@
 <metadata>
     <title>
-        Test Lesson 1
+        Test Lesson 2
     </title>
     <description>
-        This is the first test lesson, containing 5 steps and some other details.
+        This is the second test lesson, containing 2 steps.
     </description>
 </metadata>
 
@@ -16,12 +16,35 @@
         Welcome to the second test lesson. This only has 2 steps.
     </text>
     <attributes>
-        <panel-type central-focus>
+        <panel-type popup-left>
+        <min-requirements 4>
     </attributes>
+    <run-code>
+    <!run-code>
+    <changes-made>
+    <has-python>
+        print("1")
+        print("2")
+    </has-python>
 </step>
 
 <step Step2>
     <text>
         Thanks for reading.
     </text>
+    <requirements>
+        </run-code>
+        <!time-passed 10>
+        <!no-errors>
+        <time-passed 20>
+        <!has-python>print("Hello World")</!has-python>
+    </requirements>
+    <hint>
+        <text>Hello World Detected! Now remove it to continue.</text>
+        <has-python>print("Hello World")</has-python>
+    </hint>
+    <hint>
+        <!time-passed 20>
+        <text>This hint will be gone soon.</text>
+    </hint>
 </step>

@@ -2,7 +2,7 @@
 <template>
     <b-modal no-close-on-backdrop :hide-header-close="!showCloseBtn" :id="dlgId" :title="dlgTitle" :ok-only="okOnly" 
         :ok-title="okTitle" :ok-disabled="okDisabled" :cancel-title="cancelTitle" :size="size" :auto-focus-button="autoFocusButton" 
-        :modal-class="cssClass" @shown="$emit('shown')" @hidden="$emit('hidden')">
+        :modal-class="cssClass" :disable-enter-close="disableEnterClose">
         <slot/>
         <!-- if we use a loading OK, we assume ONLY the OK button is customised and use the default cancel/hide buttons of the modal -->
         <template v-if="useLoadingOK" #modal-ok>
@@ -51,6 +51,11 @@ export default Vue.extend({
         elementToFocusId: String,
         useYesNo: Boolean, // by default, the values of the buttons are OK and Cancel, this flag allows using Yes/No (in combination with okOnly) if needed
         cssClass: String,
+        disableEnterClose: { // Needed for modals with text inputs
+            type: Boolean,
+            default: false,
+            required: false,
+        },
     },
 
     mounted(){
@@ -91,7 +96,7 @@ export default Vue.extend({
         validateOnEnterKeyDown(event: KeyboardEvent){
             // Hitting "enter" on the dialog triggers its validation (the trigger property of the BvModalEvent sent by Bootstrap will be "event" in that case)
             // Only if there is not focus on a button already (then it show leave the action on that button to be performed)
-            if((document.activeElement?.tagName.toLocaleLowerCase()??"") != "button" && event.code.toLowerCase() == "enter" && this.appStore.isModalDlgShown && this.dlgId == this.appStore.currentModalDlgId){
+            if(!this.disableEnterClose && (document.activeElement?.tagName.toLocaleLowerCase()??"") != "button" && event.code.toLowerCase() == "enter" && this.appStore.isModalDlgShown && this.dlgId == this.appStore.currentModalDlgId){
                 this.$root.$emit("bv::hide::modal", this.dlgId);
             }
         },

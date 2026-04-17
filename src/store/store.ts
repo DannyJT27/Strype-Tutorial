@@ -1,5 +1,5 @@
 import Vue from "vue";
-import { FrameObject, CollapsedState, CurrentFrame, CaretPosition, FrozenState, MessageDefinitions, ObjectPropertyDiff, AddFrameCommandDef, EditorFrameObjects, MainFramesContainerDefinition, DefsContainerDefinition, StateAppObject, UserDefinedElement, ImportsContainerDefinition, EditableFocusPayload, SlotInfos, FramesDefinitions, EmptyFrameObject, NavigationPosition, FormattedMessage, FormattedMessageArgKeyValuePlaceholders, generateAllFrameDefinitionTypes, AllFrameTypesIdentifier, BaseSlot, SlotType, SlotCoreInfos, SlotsStructure, LabelSlotsContent, FieldSlot, SlotCursorInfos, StringSlot, areSlotCoreInfosEqual, StrypeSyncTarget, ProjectLocation, MessageDefinition, PythonExecRunningState, AddShorthandFrameCommandDef, isFieldBaseSlot, StrypePEALayoutMode, SaveRequestReason, RootContainerFrameDefinition, StrypeLayoutDividerSettings, MediaSlot, SlotInfosOptionalMedia, ModifierKeyCode, Lesson, LessonStepDetails, StepPanelType } from "@/types/types";
+import { FrameObject, CollapsedState, CurrentFrame, CaretPosition, FrozenState, MessageDefinitions, ObjectPropertyDiff, AddFrameCommandDef, EditorFrameObjects, MainFramesContainerDefinition, DefsContainerDefinition, StateAppObject, UserDefinedElement, ImportsContainerDefinition, EditableFocusPayload, SlotInfos, FramesDefinitions, EmptyFrameObject, NavigationPosition, FormattedMessage, FormattedMessageArgKeyValuePlaceholders, generateAllFrameDefinitionTypes, AllFrameTypesIdentifier, BaseSlot, SlotType, SlotCoreInfos, SlotsStructure, LabelSlotsContent, FieldSlot, SlotCursorInfos, StringSlot, areSlotCoreInfosEqual, StrypeSyncTarget, ProjectLocation, MessageDefinition, PythonExecRunningState, AddShorthandFrameCommandDef, isFieldBaseSlot, StrypePEALayoutMode, SaveRequestReason, RootContainerFrameDefinition, StrypeLayoutDividerSettings, MediaSlot, SlotInfosOptionalMedia, ModifierKeyCode, Lesson, LessonStepDetails, StepPanelType, LessonTestModeConfig } from "@/types/types";
 import { getObjectPropertiesDifferences, getSHA1HashForObject } from "@/helpers/common";
 import i18n from "@/i18n";
 import {calculateNextCollapseState, checkCodeErrors, checkStateDataIntegrity, cloneFrameAndChildren, evaluateSlotType, generateFlatSlotBases, getAllChildrenAndJointFramesIds, getAvailableNavigationPositions, getFlatNeighbourFieldSlotInfos, getFrameSectionIdFromFrameId, getParentOrJointParent, getSlotDefFromInfos, getSlotIdFromParentIdAndIndexSplit, getSlotParentIdAndIndexSplit, isContainedInFrame, isFramePartOfJointStructure, removeFrameInFrameList, restoreSavedStateFrameTypes, retrieveSlotByPredicate, retrieveSlotFromSlotInfos} from "@/helpers/storeMethods";
@@ -252,7 +252,7 @@ export const useStore = defineStore("app", {
 
             errorLessonStepDisplay: { // Used to ensure getters do not return UNDEFINED when expecting a LessonStepDetails
                 stepRef: "errorDisplayingStep",
-                panelType: StepPanelType.RIGHT_POPUP,
+                attributes: {panelType: StepPanelType.LEFT_POPUP},
                 textContent: "ERROR LOADING STEP DETAILS - CHECK CONSOLE FOR MORE INFORMATION",
                 requirements: [],
                 hints: [],
@@ -261,6 +261,12 @@ export const useStore = defineStore("app", {
             loadedLessons: [] as Lesson[], // Stores lessons with unparsed lesson files which have been uploaded in the current session, allowing easy re-opening. 
 
             isLessonRunningInTestMode: false, // Determines whether the current lesson is being run in test mode
+
+            lessonTestModeConfig: {
+                initialStep: 1,
+                disableRequirements: false,
+                enforceInitialFile: true,
+            } as LessonTestModeConfig,
 
             codeRanSinceLastStep: false, // Used for the <run-code> requirement
 
@@ -805,6 +811,10 @@ export const useStore = defineStore("app", {
 
         getLessonInTestMode: (state) => {
             return state.isLessonRunningInTestMode;
+        },
+
+        getLessonTestModeConfig: (state) => {
+            return state.lessonTestModeConfig;
         },
 
         getHasRanCode: (state) => {
@@ -2615,6 +2625,7 @@ export const useStore = defineStore("app", {
                 let errorDetailMessage = payload.errorReason ?? "unknown reason";
                 let isVersionCorrect = false;
                 let newStateObj = {} as {[id: string]: any};
+                console.log(payload.stateJSONStr);
 
                 // If there is an error set because the file couldn't be retrieved
                 // we don't check anything, just get to the error display.
@@ -2719,6 +2730,7 @@ export const useStore = defineStore("app", {
                     catch(err){
                         // We cannot use the string arguemnt to retrieve a valid state --> inform the users
                         isStateJSONStrValid = false;
+                        console.error(err);
                         errorDetailMessage = i18n.t("errorMessage.wrongDataFormat") as string;
                         doFinaliseCheckup();
                     }
@@ -3234,6 +3246,10 @@ export const useStore = defineStore("app", {
             this.isLessonRunningInTestMode = isTestMode;
         },
 
+        updateLessonTestModeConfig(config: LessonTestModeConfig) {
+            this.lessonTestModeConfig = config;
+        },
+
         setCurrentLessonObject(lesson: Lesson) {
             this.currentLessonObject = lesson;
         },
@@ -3277,6 +3293,10 @@ export const useStore = defineStore("app", {
         lessonResetStepIndexes() {
             this.currentLessonStepIndex = 0; // Setting unlocked indexes to 0 without also resetting currentLessonStepIndex will cause logic issues
             this.unlockedLessonStepIndex = 0;
+        },
+
+        lessonLockFutureSteps() {
+            this.unlockedLessonStepIndex = this.currentLessonStepIndex;
         },
 
         // Modifying currentLessonSteps.

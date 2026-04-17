@@ -1263,8 +1263,7 @@ export interface Lesson {
     // Users running the lesson will need it to be parsed, which should be very fast anyway due to size limits for lesson files
 }
 
-// All editable aspects of a singular lesson step (TBC: will have more added during dev of markup language)
-// All attributes (except panelType) are optional to reduce memory load. As such, implementations for them need to account for default values when the attribute is undefined.
+// All editable aspects of a singular lesson step
 export interface LessonStepDetails {
     stepRef: string; // Steps are user-defined as <step "stepRef">. Used to pinpoint problems in error messages e.g. 'Step "stepRef" has no text content.'
     sourceLineNum?: number; // Used for Test Mode's Debug Panel
@@ -1275,13 +1274,21 @@ export interface LessonStepDetails {
     requirements: LessonRequirement[]; // Required, init as empty
 
     // Attributes
-    panelType: StepPanelType; // ! Required as no value here means the step panel is not displayed at all.
+    attributes: LessonStepAttributes;
+} 
+
+// All attributes (except panelType) are optional to reduce memory load. As such, implementations for them need to account for default values when the attribute is undefined.
+interface LessonStepAttributes {
+    panelType: StepPanelType; // !!! Required as no value here means the step panel is not displayed at all.
+
     colourScheme?: string;
     hideRequirementExpectedValues?: boolean; // See lessonRequirementHandler.ts -> requirementMessage()
-} 
+    minRequirements?: number;
+}
 
 export interface LessonRequirement {
     reqType: StepRequirementType;
+    negated: boolean; // If true, then the condition of the requirement is negated
     needed: boolean; // If true, requirement is always needed (for cases where only x amount of requirements needs to be fulfilled)
     numValue?: number; // Use case varies with reqType
     textValue?: string; // Use case varies with reqType
@@ -1297,9 +1304,8 @@ export enum StepRequirementType {
     CHANGES_MADE = "changes-made", // Any change to the editor since opening this step [TBC IMPLEMENTATION]
     CONSOLE_OUTPUT = "console-output", // After running their code, the console has outputted a line that matches 'textValue' [TBC IMPLEMENTATION]
     FAILED_ATTEMPTS = "failed-attempts", // Student has failed to progress at least 'numValue' times (only used for hints)
-    NO_ERRORS = "no-errors", // Code has no errors at all [TBC IMPLEMENTATION]
-    PYTHON_PRESENT = "python-present", // Student has a code segement matching 'textValue' [TBC IMPLEMENTATION]
-    PYTHON_NOT_PRESENT = "python-not-present", // Student DOES NOT have a code segement matching 'textValue' [TBC IMPLEMENTATION]
+    HAS_PYTHON = "has-python", // Student has a code segement matching 'textValue'
+    NO_ERRORS = "no-errors", // Code has no errors at all
     RUN_CODE = "run-code", // Student has run their code since opening this step
     TIME_PASSED = "time-passed", // At least 'numValue' seconds have passed 
     //...
@@ -1317,7 +1323,10 @@ export interface LessonMetadata {
     title: string;
     description: string;
     totalSteps: number;
-    initialFileName?: string; // Only needed if specified in Lesson File
+    
+    initialFileType?: string;
+    initialFileFirstLine?: number; // The content is already in sourceLines[], no need to store again
+
     //optional stats to show beforehand
     difficulty?: string;
     difficultyColour?: string;
@@ -1325,15 +1334,16 @@ export interface LessonMetadata {
 }
 
 // Interface for generating Warnings and Errors when parsing lesson files (see lessonFileParser.ts)
-export interface LessonParseErrorMessage {
-    errorMessageContent: string;
+export interface LessonParseDebugMessage {
+    debugMessageContent: string;
+    messageType: "suggestion" | "warning" | "error" | "fatal";
 
-    // sectionRef stores the stepRef or other section where the error is located.
-    sectionRef?: string; // Not required - no sectionRef means it is a problem with the entire file.
+    // Locating the error
+    lineNum: number,
+    stepRef: string; // Not required - no stepRef means it is a problem outside a step.
 
     // Helpful documentation link (only when relevant)
-    documentationText?: string; // Display text
-    documentationLink?: string; // Link to the respective page in the Lesson File Documentation
+    documentationKeyword: string;
 }
 
 // Interface for returning parsed lesson files
@@ -1345,9 +1355,7 @@ export interface LessonParseResult {
     details: LessonMetadata;
 
     //debug messages
-    suggestions: LessonParseErrorMessage[];
-    warnings: LessonParseErrorMessage[]; // Successful, perfect results will return an empty array []
-    ERRORS: LessonParseErrorMessage[]; // Successful results will return an empty array [] (all caps for better distinguishability from warnings)
+    debugMessages: LessonParseDebugMessage[];
 }
 
 // Interface for the parser to keep track of the current section being read and what subsections/attributes are inside it
@@ -1356,4 +1364,10 @@ export interface LessonParseNestSection {
     contents: string[]; // Not optional, initialize as empty
 }
 
-//tbc requirement type, hint type containing requirement type
+// Config Interface for running a lesson in test mode
+export interface LessonTestModeConfig {
+    initialStep: number;
+    disableRequirements: boolean;
+    clearEditorOnStart: boolean;
+    enforceInitialFile: boolean;
+}

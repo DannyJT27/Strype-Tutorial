@@ -90,9 +90,10 @@
             <div class="menu-separator-div"></div>           
             <a v-show="showMenu" :class="'strype-menu-link ' + scssVars.strypeMenuItemClassName" @click="openLoadDemoProjectModal">{{$t('appMenu.loadDemoProject')}}</a>
             <OpenDemoDlg ref="openDemoDlg" :dlg-id="loadDemoProjectModalDlgId"/>
-            <a v-show="showMenu" :class="'strype-menu-link ' + scssVars.strypeMenuItemClassName" @click="openLoadLessonModal">{{$t('appMenu.loadLesson')}}</a>
-            <OpenLessonDlg ref="openLessonDlg" :dlg-id="loadLessonModalDlgId"/>
             /* IFTRUE_isPython
+            <a v-show="showMenu" :class="'strype-menu-link ' + scssVars.strypeMenuItemClassName" @click="openLoadLessonModal">{{$t('appMenu.loadLesson')}}</a>
+            <OpenLessonDlg ref="openLessonDlg" :dlg-id="loadLessonModalDlgId" @open-create-new-lesson="openCreateNewLessonModal"/>
+            <CreateNewLessonDlg ref="createNewLessonDlg" :dlg-id="createNewLessonModalDlgId" @open-load-lesson="openLoadLessonModalFromCreateModal"/>
             <a v-show="showMenu" :class="'strype-menu-link ' + scssVars.strypeMenuItemClassName" @click="openLibraryDoc">{{$t('appMenu.apiDocumentation')}}</a>
                FITRUE_isPython */
             <!-- category: export -->
@@ -229,6 +230,7 @@ import OpenDemoDlg from "@/components/OpenDemoDlg.vue";
 import OpenLessonDlg from "@/components/OpenLessonDlg.vue";
 import { CloudFileSharingStatus, isSyncTargetCloudDrive } from "@/types/cloud-drive-types";
 import { stopCurrentLesson } from "@/helpers/runningLessonHandler";
+import CreateNewLessonDlg from "./CreateNewLessonDlg.vue";
 
 //////////////////////
 //     Component    //
@@ -240,6 +242,7 @@ export default Vue.extend({
     components: {
         OpenDemoDlg,
         OpenLessonDlg,
+        CreateNewLessonDlg,
         Slide,
         CloudDriveHandler,
         ModalDlg,
@@ -425,6 +428,10 @@ export default Vue.extend({
 
         loadLessonModalDlgId(): string {
             return "load-strype-lesson-modal-dlg";
+        },
+
+        createNewLessonModalDlgId(): string {
+            return "create-new-strype-lesson-modal-dlg";
         },
 
         loadProjectTargetButtonGpId(): string {
@@ -682,6 +689,14 @@ export default Vue.extend({
             }
         },
 
+        openLoadLessonModalFromCreateModal(): void {
+            // Simpler version for pressing 'back' from CreateNewLessonModal (no save proj dialog)
+            this.$root.$emit("bv::show::modal", this.loadLessonModalDlgId);
+        },
+
+        openCreateNewLessonModal(): void {
+            this.$root.$emit("bv::show::modal", this.createNewLessonModalDlgId);
+        },
 
         handleSaveMenuClick(saveReason?: SaveRequestReason): void {
             // Some problem, like for the load project menu, happens because of changing v-if to v-show (it works first time, but not second time).

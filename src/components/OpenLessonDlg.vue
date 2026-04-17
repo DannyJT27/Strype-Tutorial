@@ -11,7 +11,7 @@
         <!-- Override of the footer content to add custom buttons, unique to each page. Buttons before/with 'mr-auto' are fixed to the left -->
         <template #modal-footer-content="{ cancel }">
             <template v-if="modalPage === 'list'">
-                <b-button variant="success" @click="cancel()"> <!-- TBC -->
+                <b-button variant="success" @click="clickCreateLesson(); cancel()">
                     Create a Lesson
                 </b-button>
                 <b-button variant="warning" class="mr-auto" :disabled="uploadedLessonsCount === 0" @click="modalPage = 'edit'; selectedLessonIndex = 0">
@@ -25,11 +25,11 @@
                 </b-button>
             </template>
             <template v-else-if="modalPage === 'edit'">
+                <b-button variant="danger" class="mr-auto" @click="clickDelete()">
+                    Delete Lesson
+                </b-button>
                 <b-button variant="secondary" @click="modalPage = 'list'; selectedLessonIndex = -1">
                     Done
-                </b-button>
-                <b-button variant="danger" @click="clickDelete()">
-                    Delete Lesson
                 </b-button>
             </template>
             <template v-else-if="modalPage === 'parsing'">
@@ -55,8 +55,8 @@
                 <b-button variant="secondary" @click="modalPage = 'list'">
                     Back
                 </b-button>
-                <b-button :variant="lessonParseResult && lessonParseResult.details.initialFileName ? 'primary' : 'success'" @click="clickRun()">
-                    {{ lessonParseResult && lessonParseResult.details.initialFileName ? "Upload Project File" : "Run Lesson" }}
+                <b-button variant="success" @click="clickRun()">
+                    Run Lesson
                 </b-button>
             </template>
         </template>
@@ -114,7 +114,7 @@
                         <div class="open-lesson-dlg-split-button-lesson-data">
                             <!-- .slice(0, 4) is used below to limit 4 display points on this page -->
                             <div
-                                v-for="(point, j) in getMetadataPointsList(item.details).slice(0, 4)"
+                                v-for="(point, j) in getMetadataPoints(item.details).slice(0, 4)"
                                 :key="j"
                                 class="open-lesson-dlg-pill-info"
                                 :style="{ backgroundColor: point.bgColour, borderColor: point.borderColour, opacity: selectedLessonIndex === i ? 0.8 : 1 }"
@@ -143,41 +143,10 @@
             </div>
 
             <!-- PAGE 'runLesson' - Displays a summary of the loaded lesson with some extra details if necessary -->
-            <div v-if="modalPage === 'runLesson'" :style="{display: 'flex', flexDirection: 'column', height: '100%', width: '100%'}">
-                <div class="open-lesson-dlg-title">
-                    {{ lessonParseResult ? lessonParseResult.details.title : "Unnamed Lesson"}}
-                </div>
-                <!-- Another display of the data points -->
-                <div :style="{display: 'flex', gap: '6px', paddingLeft: '10px'}">
-                    <div
-                        v-for="(point, j) in getMetadataPointsList(lessonParseResult ? lessonParseResult.details : getErrorLoadingLesson.details)"
-                        :key="j"
-                        class="open-lesson-dlg-pill-info"
-                        :style="{ fontSize: '14px', backgroundColor: point.bgColour, borderColor: point.borderColour }"
-                    >
-                        {{ point.content }}
-                    </div>
-                </div>
-                <div class="open-lesson-dlg-main-message">
-                    {{ lessonParseResult ? lessonParseResult.details.description : "No description provided."}}
-                    <br><br>
-                    <!-- Extra description section explaining the usage of Initial Python Files -->
-                    <div v-if="lessonParseResult && lessonParseResult.details.initialFileName">
-                        This Lesson expects an initial Strype Python File '<b>{{lessonParseResult.details.initialFileName}}</b>' to be provided.
-                        You will be prompted to upload this file upon continuing, and the Lesson will begin after the file is successfully loaded.
-                        <br><br>
-                        Select 'Upload Project File' to begin.
-                    </div>
-                    <div v-else>
-                        Select 'Run Lesson' to begin.
-                    </div>
-                </div>
-                <div class="open-lesson-dlg-warning-box" v-if="lessonParseResult && lessonParseResult.warnings.length > 0">
-                    The Lesson File returned {{ lessonParseResult.warnings.length > 1 ? lessonParseResult.warnings.length + " warnings" : "a warning" }} whilst being parsed.
-                    Please confirm with the provider of this Lesson File that this is expected, as it could cause unintended behaviour during the Lesson.
-                </div>
+            <div v-if="modalPage === 'runLesson' && lessonParseResult">
+                <!-- Handled in its own component for consistency with other modals -->
+                <LessonDetailsPreview :lesson="lessonParseResult"/>
             </div>
-            
         </div>
     </ModalDlg>    
 </template>
@@ -190,7 +159,11 @@ import ModalDlg from "@/components/ModalDlg.vue";
 import { getExampleLessons } from "@/helpers/exampleLessons";
 import { Lesson, LessonMetadata, LessonParseResult } from "@/types/types";
 import { parseFullLessonFile } from "@/helpers/lessonFileParser";
-import { startLesson } from "@/helpers/runningLessonHandler";
+import { startLesson, updateTestModeSettings } from "@/helpers/runningLessonHandler";
+import { getMetadataPointsList } from "@/helpers/lessonMetadataPoints";
+import LessonDetailsPreview from "./LessonDetailsPreview.vue";
+import { loadLessonProject } from "../helpers/runningLessonHandler";
+import App from "@/App.vue";
 
 // Info to display when lessonParseResult happens to be null
 const errorLoadingLesson: Lesson = {
@@ -202,14 +175,8 @@ const errorLoadingLesson: Lesson = {
     },
 };
 
-type MetadataPoint = {
-    content: string;
-    borderColour?: string;
-    bgColour?: string;
-};
-
 export default Vue.extend({
-    components: {ModalDlg},
+    components: {ModalDlg, LessonDetailsPreview},
     
     props: {
         dlgId: String,
@@ -269,54 +236,13 @@ export default Vue.extend({
             this.lessonsStored.reverse();
         },
 
-        getMetadataPointsList(lessonDetails: LessonMetadata): MetadataPoint[] {
-            // Stored as [borderColour, bgColour]
-            const pillColourSchemes: Record<string, [string, string]> = {
-                "red": ["#ff364d", "#ff928a"],
-                "dark-red": ["#a61f2f", "#eb867f"],
-                "orange": ["#faa22f", "#fcbb74"],
-                "yellow": ["#f0fa34", "#f7fc95"],
-                "green": ["#3afa2f", "#aafaa7"],
-                //Blue colours should be avoided due to the selection colour being blue
-            };
-
-            // Start with totalSteps as this will always be present
-            const allPoints = [{
-                content: lessonDetails.totalSteps + " Steps",
-            }] as MetadataPoint[];
-
-            if(lessonDetails.estimatedTime) {
-                allPoints.push({
-                    content: "~" + lessonDetails.estimatedTime + " minutes",
-                });
-            }
-
-            // Maps difficulty string to [display word, [borderColour, bgColour]]
-            const difficultyPointMap: Record<string, [string, [string, string]]> = {
-                "easy": ["Easy", pillColourSchemes["green"]],
-                "beginner": ["Beginner", pillColourSchemes["green"]],
-                "medium": ["Medium", pillColourSchemes["orange"]],
-                "intermediate": ["Intermediate", pillColourSchemes["orange"]],
-                "hard": ["Hard", pillColourSchemes["red"]],
-                "advanced": ["Advanced", pillColourSchemes["red"]],
-                "extreme": ["Extreme", pillColourSchemes["dark-red"]],
-                "1-star": ["☆☆☆☆★", pillColourSchemes["green"]],
-                "2-star": ["☆☆☆★★", pillColourSchemes["yellow"]],
-                "3-star": ["☆☆★★★", pillColourSchemes["orange"]],
-                "4-star": ["☆★★★★", pillColourSchemes["red"]],
-                "5-star": ["★★★★★", pillColourSchemes["dark-red"]],
-            };
-
-            if(lessonDetails.difficulty) {
-                allPoints.push({
-                    content: difficultyPointMap[lessonDetails.difficulty][0],
-                    borderColour: difficultyPointMap[lessonDetails.difficulty][1][0],
-                    bgColour: difficultyPointMap[lessonDetails.difficulty][1][1],
-                });
-            }
-
-            return allPoints;
+        getMetadataPoints(lesson: LessonMetadata) {
+            return getMetadataPointsList(lesson);
         },
+
+        clickCreateLesson() {
+            this.$emit("open-create-new-lesson"); // Sends message to Menu.vue
+        },  
 
         clickContinue() {
             // Method to handle clicking the 'Continue' button. Since there are multiple different 'pages' on this modal, the usual OK function can't be used
@@ -336,8 +262,8 @@ export default Vue.extend({
                     this.lessonParseResult = parseFullLessonFile(this.lessonsStored[this.selectedLessonIndex].sourceLines);
 
                     // With the parse result stored, set the page to either 'error' or 'lesson', depending on the presence of errors.
-                    // Does not use the .success boolean just yet, as this only determines whether the file was fully parsed, which can still have some errors present.
-                    this.modalPage = this.lessonParseResult.ERRORS.length == 0 ? "runLesson" : "error";
+                    // Does not use the .success boolean, as this only determines whether the file was fully parsed, which can still have some errors present.
+                    this.modalPage = this.lessonParseResult.debugMessages.some((m) => ["error", "fatal"].includes(m.messageType)) ? "error" : "runLesson";
                 }
             }
             else if(this.modalPage == "edit") {
@@ -356,19 +282,22 @@ export default Vue.extend({
             this.lessonsStored.splice(this.selectedLessonIndex, 1); // Also delete locally so that it doesn't need to run update again
 
             if(this.modalPage == "error") {
-                this.modalPage = "list"; // Go back to list page (only if on error page)
+                this.modalPage = "list"; // Go back to list page (only if on error page deleting a lesson file with errors)
             }
         },
 
         clickRun() {
-            //TBC UPLOADING INITIAL FILE
             if(this.lessonParseResult) {
+                updateTestModeSettings(false);
+                loadLessonProject(this.lessonParseResult, this.lessonsStored[this.selectedLessonIndex].sourceLines, this.$root.$children[0] as InstanceType<typeof App>);
                 startLesson(this.lessonParseResult, this.lessonsStored[this.selectedLessonIndex].sourceLines);
+
+                window.setTimeout(() => {
+                    this.modalPage = "list"; // Go back to list page with a brief delay so that it happens after the modal is hidden
+                }, 500);
+                this.lessonParseResult = null; // Clear temp storage
+                this.$root.$emit("bv::hide::modal", this.dlgId); // Hide the modal
             }
-            window.setTimeout(() => {
-                this.modalPage = "list"; // Go back to list page with a brief delay so that it happens after the modal is hidden
-            }, 500);
-            this.$root.$emit("bv::hide::modal", this.dlgId); // Hide the modal
         },
     },
 });
@@ -461,17 +390,6 @@ span.lesson-demo-dlg-description {
     font-style: italic;
 }
 
-.open-lesson-dlg-main-message {
-    padding: 10px;
-    font-size: 17px; 
-}
-
-.open-lesson-dlg-title {
-    padding: 10px;
-    font-size: 25px; 
-    font-weight: bold;
-}
-
 .open-lesson-dlg-pill-info { //displayed container is pill shaped
     padding: 1px 5px;
     border-radius: 999px; //makes pill shape
@@ -483,18 +401,6 @@ span.lesson-demo-dlg-description {
     border: 2px solid #a1a1a1; //default gray, but some individual pills will override the colour
     display: inline-flex;
     align-items: center;
-}
-
-.open-lesson-dlg-warning-box {
-    width: 100%;
-    padding: 12px 14px;
-    background-color: #fff4e5;
-    border: 1px solid #f5c27a;
-    color: #8a4b00;
-    border-radius: 8px;
-    box-sizing: border-box;
-    word-wrap: break-word;
-    margin-top: auto; //move to bottom
 }
 
 </style>

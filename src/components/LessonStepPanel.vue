@@ -56,10 +56,10 @@
                     class="step-panel-test-mode-text"
                     v-if="runningTestMode"
                     @click="openTestModeDlg"
-                >  <!-- PLACEHOLDER CONDITION -->
+                > 
                     &nbsp;VIEW DEBUG INFO
                 </p>
-                <LessonTestModeDlg :dlgId="testModeDlgId"/> <!-- Modal component, all data for it is handled inside the component .vue file -->
+                <LessonTestModeDlg ref="testModeDlg" :dlgId="testModeDlgId" v-if="runningTestMode"/> <!-- Modal component, all data for it is handled inside the component .vue file -->
                 <div class="step-panel-button-wrapper">
                     <!-- Prev Step Arrow - Disabled on first step -->
                     <button 
@@ -121,12 +121,12 @@ const errorLessonStepDisplay: LessonStepDetails = {
     requirements: [],
     hints: [],
 
-    panelType: StepPanelType.RIGHT_POPUP,
+    attributes: {panelType: StepPanelType.LEFT_POPUP},
     textContent: "ERROR LOADING STEP DETAILS - CHECK CONSOLE FOR MORE INFORMATION",
 };
 
 export default Vue.extend({
-    name: "LessonPanel",
+    name: "LessonStepPanel",
 
     components: {LessonTestModeDlg},
 
@@ -192,7 +192,7 @@ export default Vue.extend({
 
         requirementMessageDisplay(): string {
             if(this.incompleteStepReqs.length > 0) {
-                return requirementMessage(this.incompleteStepReqs[0], this.appStore.getCurrentStepAttributes.hideRequirementExpectedValues ?? false);
+                return requirementMessage(this.incompleteStepReqs[0], this.appStore.getCurrentStepAttributes.attributes.hideRequirementExpectedValues ?? false);
             }
             return "";
         },
@@ -201,14 +201,15 @@ export default Vue.extend({
             if(this.appStore.getCurrentStepAttributes.hints.length > this.hintDisplayIndex && this.hintDisplayIndex != -1) {
                 return this.appStore.getCurrentStepAttributes.hints[this.hintDisplayIndex].message;
             }
-            // Note that this will only display when there ARE hints on this step, but all of them are locked behind requirements. 
+
+            return "Give the task a go first! Come back here later for help if you need it.";
+            // ^ Note that this message will only display when there ARE hints on this step, but all of them are locked behind requirements. 
             // When there are no hints at all, the button is disabled.
             // If an educator wants to overwrite this message, they can simply put the new message in a hint with no requirements.
-            return "Give the task a go first! Come back here later for help if you need it.";
         },
 
         getColourScheme(): string {
-            return this.appStore.getCurrentStepAttributes.colourScheme ?? "green"; // Default value is green for Strype Colour Scheme
+            return this.appStore.getCurrentStepAttributes.attributes.colourScheme ?? "green"; // Default value is green for Strype Colour Scheme
         },
 
         testModeDlgId(): string {
@@ -226,12 +227,15 @@ export default Vue.extend({
                 this.showHintMessage = false;
             }
 
-            // Checks 2 conditions:
+            const currentStep = this.appStore.getCurrentStepAttributes;
+
+            // Checks 3 conditions:
             // 1. whether the current step index is the furthest unlocked one, as requirements only apply to this step.
             // 2. whether the current step has requirements assigned to it.
-            if(this.appStore.isCurrentStepLastUnlocked &&  this.appStore.getCurrentStepAttributes.requirements.length > 0) {
+            // 3. whether disableRequirements is toggled (if in test mode)
+            if(this.appStore.isCurrentStepLastUnlocked && currentStep.requirements.length > 0 && !(this.appStore.getLessonInTestMode && this.appStore.getLessonTestModeConfig.disableRequirements) ) {
                 // All requirements must be fulfilled in order for the user to go to the next step
-                this.incompleteStepReqs = getIncompleteRequirements(this.appStore.getCurrentStepAttributes.requirements);
+                this.incompleteStepReqs = getIncompleteRequirements(currentStep.requirements);
 
                 if (!this.failedAttemptCooldownTimer) {
                     this.appStore.lessonIncNextStepFailedAttempts(); // +1 to the attempts counter
@@ -245,10 +249,11 @@ export default Vue.extend({
                     clearTimeout(this.requirementMessagePopoverTimer);
                 }
 
-                if(this.incompleteStepReqs.length == 0) { // Only go next when all requirements are fulfilled
-                    resetRequirementValues();
-
+                // Only go next when enough requirements are fulfilled
+                if(currentStep.requirements.length - (currentStep.attributes.minRequirements ?? currentStep.requirements.length) >= this.incompleteStepReqs.length) {
                     this.appStore.lessonIncStepIndex();
+                    resetRequirementValues(); // <- Must be called after incStepIndex
+                    this.incompleteStepReqs = getIncompleteRequirements(currentStep.requirements);
                     this.showRequirmentMessage = false;
                 }
                 else {
@@ -260,12 +265,23 @@ export default Vue.extend({
                 }
             }
             else {
-                // No further behaviour beyond going to the next step
-                this.appStore.lessonIncStepIndex();
-            }
+                // The code above does not run when no requirements are present, even when on the latest step
+                if(this.appStore.isCurrentStepLastUnlocked) {
+                    this.appStore.lessonIncStepIndex();
+                    resetRequirementValues();
+                    // Structured like this because isCurrentStepLastUnlocked needs to be checked 
+                    // before incrementing, but resetRequirementValues can only be run after incrementing.
+                }
+                else {
+                    this.appStore.lessonIncStepIndex();
+                }
 
-            // Update it again to ensure the button colour display remains synced
-            this.incompleteStepReqs = getIncompleteRequirements(this.appStore.getCurrentStepAttributes.requirements);
+                // Check again for isCurrentStepLastUnlocked after incrementing to see if requirements need to be updated
+                if(this.appStore.isCurrentStepLastUnlocked && currentStep.requirements.length > 0) {
+                    // Update requirement checks, but only if needed (when next step is last one unlocked)
+                    this.incompleteStepReqs = getIncompleteRequirements(currentStep.requirements);
+                }
+            }
         },
 
         prevStep(): void {
@@ -314,7 +330,6 @@ export default Vue.extend({
             }
             else {
                 // Choose which hint to display based on the attributes of the step
-                //TBC OTHER CYCLE TYPES?
                 const hintToDisplay = validHints[0];
 
                 // Find the index of the hint in the original full list and set hintDisplayIndex accordingly
@@ -356,7 +371,7 @@ export default Vue.extend({
 
         // Opens the debug menu modal
         openTestModeDlg(): void {
-            // Refreshes the component upon opening it to update some displayed values, such as the timer
+            (this.$refs.testModeDlg as InstanceType<typeof LessonTestModeDlg>).updateCards();
             this.$root.$emit("bv::show::modal", this.testModeDlgId);
         },
 
@@ -379,9 +394,9 @@ export default Vue.extend({
                     "   <text>This is an uploaded lesson file with no errors or suggestions to display.</text>",
                     "   <attributes><panel-type central-focus></attributes>",
                     "</step>",
-                    "<step Step 2>",
+                    "<STEP Step 2>",
                     "   <text>Write a print statement saying 'Hello World'.</text>",
-                    "   <requirements><time-passed 5></requirements>",
+                    "   <requirements><time-passed 5><no-errors></requirements>",
                     "</step>",
                     "<step Step 3>",
                     "   <text>Now give it a try.</text>",
@@ -437,7 +452,7 @@ export default Vue.extend({
             this.appStore.newLoadedLesson({
                 sourceLines: [
                     "<metadata><title>Uploaded Lesson 3</title>",
-                    "<description>This lesson file has no errors but some warnings, and an initial file to upload.</description></metadata>",
+                    "<description>This lesson file has no errors but some warnings</description></metadata>",
                     "<defaults><attributes><colour-scheme blue><panel-type popup-left></attributes></defaults>",
                     "<step Step 1>",
                     "   <text>Some text content</text>",
@@ -450,13 +465,115 @@ export default Vue.extend({
                 ],
                 details: {
                     title: "Uploaded Lesson 3",
-                    description: "This lesson file has no errors but some warnings, and an initial file to upload.",
+                    description: "This lesson file has no errors but some warnings",
                     totalSteps: 2,
                     difficulty: "extreme",
                     estimatedTime: 30,
-                    initialFileName: "lesson3.spy",
                 },
             });
+
+            this.appStore.newLoadedLesson({
+                sourceLines: [
+                    "<metadata>",
+                    "<title>",
+                    "    New Lesson",
+                    "</title>",
+                    "<description>",
+                    "    Describe your Lesson here.",
+                    "</description>",
+                    "</metadata>",
+                    "",
+                    "<step Step #1>",
+                    "<text>",
+                    "    The first Step of many.",
+                    "</text>",
+                    "</step>",
+                    "",
+                    "<step Step #2>",
+                    "<text>",
+                    "    What will you teach today?",
+                    "</text>",
+                    "<attributes>",
+                    "    <colour-scheme blue>",
+                    "</attributes>",
+                    "</step>",
+                    "<#> !!! DO NOT EDIT BELOW THIS LINE !!! </#>",
+                    "<initial-python-file spy>",
+                    "#(=> Strype:1:std",
+                    "#(=> peaLayoutMode:tabsCollapsed",
+                    "#(=> peaCommandsSplitterPane2Size:{\"undefined\":68.42,\"tabsCollapsed\":48.22}",
+                    "#(=> Section:Imports",
+                    "#(=> Section:Definitions",
+                    "#(=> Section:Main",
+                    "print(\"Hello World\") ",
+                    "if true  :",
+                    "    print(\"This is an initial file\") ",
+                    "#(=> Section:End",
+                    "",
+                    "</initial-python-file>",
+                ],
+                details: {
+                    title: "Spy File Lesson",
+                    description: "This lesson has a spy file",
+                    totalSteps: 2,
+                    difficulty: "extreme",
+                },
+            });
+
+            this.appStore.newLoadedLesson({
+                sourceLines: [
+                    "<metadata>",
+                    "<title>",
+                    "    Python",
+                    "</title>",
+                    "<description>",
+                    "    Describe your Lesson here.",
+                    "</description>",
+                    "</metadata>",
+                    "",
+                    "<step Step #1>",
+                    "<text>",
+                    "    Python Initial File.",
+                    "</text>",
+                    "</step>",
+                    "",
+                    "<step Step #2>",
+                    "<text>",
+                    "    What will you teach today?",
+                    "</text>",
+                    "<attributes>",
+                    "    <colour-scheme blue>",
+                    "</attributes>",
+                    "</step>",
+                    "<#> !!! DO NOT EDIT BELOW THIS LINE !!! </#>",
+                    "<initial-python-file py>",
+                    "print(\"Hello World\") ",
+                    "if true  :",
+                    "    print(\"This is an initial file as a .py\") ",
+                    "",
+                    "print(\"yo\") ",
+                    "",
+                    "</initial-python-file>",
+                ],
+                details: {
+                    title: "Py File Lesson",
+                    description: "This lesson has a py file",
+                    totalSteps: 2,
+                    difficulty: "extreme",
+                },
+            });
+
+            // use this for files made by testers
+            /*this.appStore.newLoadedLesson({
+                sourceLines: [
+
+                ],
+                details: {
+                    title: "",
+                    description: "",
+                    totalSteps: 1,
+                },
+            });*/
         },
     },
 });

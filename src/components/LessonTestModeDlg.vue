@@ -6,31 +6,53 @@
         okOnly
         css-class="test-mode-dlg"
         size="lg"
-        @shown="startRefreshTick"
-        @hidden="stopRefreshTick"
     >
-        <div class="test-mode-main-wrapper"> <!-- TBC MESSAGE ABOUT LOCKING FURTHER STEPS TO RE-ENABLE REQUIREMENTS AND HINTS ON A STEP-->
+        <div class="test-mode-main-wrapper">
+            <div class="test-mode-section" v-if="!currentStepIsLatest && (stepDetails.hints.length + stepDetails.requirements.length) > 0">
+                <div class="test-mode-info-text" :style="{paddingBottom: '4px'}">
+                    <b>
+                        ⓘ Requirements and Hints are only computed for the most recently 'unlocked' Step. Once a Step is completed and the user progresses,
+                        its Requirements and Hints expire and stopped being tracked. 
+                        <br>
+                        If you wish to reverse this, click 'Return to Step' to re-lock all proceeding Steps for this session.
+                        You will be able to proceed as usual as if you have just reached this Step. Your Python code will not be affected.
+                    </b>
+                </div>
+                <button class="return-to-step-button" @click="returnToStep">
+                    Return to Step
+                </button>
+            </div>
             <!-- Split into 3 main sections -->
 
             <!-- Section 1: Requirements -->
             <div class="test-mode-section">
-                <div class="test-mode-section-title">Step Requirements</div>
+                <div class="test-mode-section-title">
+                    Step Requirements
+                    <span v-if="stepDetails.requirements.length > 0 && currentStepIsLatest">
+                        <!-- Counter for requirements, including logic with min-requirements attribute. The total requirement counter turns gold when lowered by <min-requirements> -->
+                        - {{ reqCards.filter((req) => req.status).length }} /
+                        <span :style="{ color: stepDetails.attributes.minRequirements && stepDetails.requirements.length != stepDetails.attributes.minRequirements ? '#ab9700' : '' }">
+                            {{ stepDetails.attributes.minRequirements || stepDetails.requirements.length }}
+                            {{ disabledRequirements ? ' (Ignored in Test Mode)' : '' }}
+                        </span>
+                    </span>
+                </div>
                 <div class="test-mode-section-body">
                     <div class="test-mode-info-text" v-if="stepDetails.requirements.length == 0">
                         This Step has no Requirements.
                     </div>
                     <div 
-                        v-for="(req, i) in stepDetails.requirements"
+                        v-for="(rCard, i) in reqCards"
                         :key="i"
                         class="test-mode-status-card"
                     >
                         <!-- Display card for each step requirement -->
-                        <div class="test-mode-status-card-line-header" :style="{backgroundColor: getRequirementStatusCardColour(req)}">
+                        <div class="test-mode-status-card-line-header" :style="{backgroundColor: statusCardColour(rCard.status)}">
                             <div class="test-mode-status-card-details-text">
-                                {{ getRequirementStatusDetails(req) }}
+                                {{ rCard.detailsText }}
                             </div>
-                            <div class="test-mode-status-card-progress-text">
-                                {{ getRequirementStatusProgressString(req) }}
+                            <div class="test-mode-status-card-progress-text" v-if="currentStepIsLatest">
+                                {{ rCard.progressText }}
                             </div>
                         </div>
                     </div>
@@ -45,28 +67,28 @@
                         This Step has no Hints.
                     </div>
                     <div 
-                        v-for="(hint, i) in stepDetails.hints"
+                        v-for="(hCard, i) in hintCards"
                         :key="i"
                         class="test-mode-status-card"
                     >
                         <!-- Display card for each hint -->
-                        <div class="test-mode-status-card-line-header" :style="{backgroundColor: getHintStatusCardColour(hint)}">
+                        <div class="test-mode-status-card-line-header" :style="{backgroundColor: statusCardColour(hCard.status)}">
                             <div class="test-mode-status-card-details-text">
-                                "{{  getHintHeaderText(hint) }}"
+                                "{{  hCard.hintText }}"
                             </div>
                         </div>
                         <!-- Display all requirements for the hint-->
                         <div 
-                            v-for="(req, j) in hint.requirements"
+                            v-for="(rCard, j) in hCard.reqs"
                             :key="j"
                             class="test-mode-status-card-line-extra"
-                            :style="{backgroundColor: getRequirementStatusCardColour(req)}"
+                            :style="{backgroundColor: statusCardColour(rCard.status)}"
                         >
                             <div class="test-mode-status-card-details-text">
-                                {{ getRequirementStatusDetails(req) }}
+                                {{ rCard.detailsText }}
                             </div>
-                            <div class="test-mode-status-card-progress-text">
-                                {{ getRequirementStatusProgressString(req) }}
+                            <div class="test-mode-status-card-progress-text" v-if="currentStepIsLatest">
+                                {{ rCard.progressText }}
                             </div>
                         </div>
                     </div>
@@ -77,7 +99,7 @@
             <div class="test-mode-section">
                 <div class="test-mode-section-title">Source Text</div>
                 <!-- Extra informative message to explain text line wrapping, only showing if there is a long line -->
-                <div class="test-mode-info-text" :style="{paddingBottom: '4px'}"  v-if="getStepSourceCode.some(line => line.length > 96)">
+                <div class="test-mode-info-text" :style="{paddingBottom: '4px'}"  v-if="getStepSourceCode.some((line) => line.length > 96)">
                     <b>
                         ⓘ Note that the parser for Lesson Files only splits lines by manually inputted line-breaks. 
                         It will not detect automatic text wrapping from your text editor. 
@@ -106,8 +128,6 @@
                     </div>
                 </div>
             </div>
-            <!-- Invisible render of an incrementing counter, refreshes the component display upon being changed every second -->
-            <span :style="{display: 'none'}">{{ refreshTick }}</span>
         </div>
     </ModalDlg>
 </template>
@@ -118,9 +138,8 @@
 //////////////////////
 import Vue from "vue";
 import { useStore } from "@/store/store";
-import { mapStores } from "pinia";
-import { LessonHint, LessonRequirement, LessonStepDetails, StepPanelType, StepRequirementType } from "@/types/types";
-import { requirementStatusString, getIncompleteRequirements, stepHasRequirement } from "@/helpers/lessonRequirementHandler";
+import { LessonStepDetails, StepPanelType } from "@/types/types";
+import { requirementStatusString, DebugRequirementStatusDisplay, resetRequirementValues } from "@/helpers/lessonRequirementHandler";
 import scssVars from "@/assets/style/_export.module.scss";
 import ModalDlg from "@/components/ModalDlg.vue";
 
@@ -134,7 +153,7 @@ const errorLessonStepDisplay: LessonStepDetails = {
     requirements: [],
     hints: [],
 
-    panelType: StepPanelType.RIGHT_POPUP,
+    attributes: {panelType: StepPanelType.LEFT_POPUP},
     textContent: "...",
 };
 
@@ -151,110 +170,101 @@ export default Vue.extend({
         return {
             cardGreen: "#9bfb9b",
             cardRed: "#fb9b9b",
+            cardDull: "#fffb87",
 
-            // Variables below handle having the component refresh every second
-            refreshTick: 0, // used to update the display
-            refreshTimer: null as number | null, // prevents multiple timeouts at once
+            // Local store of card displays to prevent the requirementStatusString() method from being computed over and over
+            reqCards: [] as DebugRequirementStatusDisplay[],
+            hintCards: [] as {hintText: string, status: boolean, reqs: DebugRequirementStatusDisplay[]}[],
         };
     },
 
     computed: {
-        ...mapStores(useStore),
-
         scssVars() {
             // just to be able to use in template
             return scssVars;
         },
 
-        // Check whether refreshing is needed via the presence of 'dynamic' requirement types
-        checkRefreshNeeded(): boolean {
-            // Refreshing is only for dynamically updating some requirements in real time.
-            // However, only a few types can actually change status without manual input from the user, which is blocked by the modal itself.
-            const dynamicRequirementTypes = [
-                StepRequirementType.TIME_PASSED,    // timer still runs with modal open.
-                StepRequirementType.CONSOLE_OUTPUT, // in case the user runs their code before opening the modal, and a console output is fulfilled.
-            ];
-
-            return dynamicRequirementTypes.some((t) => stepHasRequirement(this.appStore.getCurrentStepAttributes, t));
-        },
-
         // Loads the information of the currently selected step from the store
         stepDetails(): LessonStepDetails {
             // Component should only be displayed when there is valid step information in the store (handled in App.vue)
-            return this.appStore.getCurrentStepAttributes ?? errorLessonStepDisplay;
+            return useStore().getCurrentStepAttributes ?? errorLessonStepDisplay;
         },
 
         // Source Code Card
         getStepSourceCode(): string[] {
-            if(!this.appStore.getCurrentLesson || !this.appStore.getCurrentStepAttributes) {
+            if(!useStore().getCurrentLesson || !useStore().getCurrentStepAttributes) {
                 return ["Error fetching source text."];
             }
             const buildReturn = [];
-            for(let i = (this.appStore.getCurrentStepAttributes.sourceLineNum ?? 1) - 1; i < this.appStore.getCurrentLesson.sourceLines.length; i++) {
+            const currentLesson = useStore().getCurrentLesson ?? {
+                details: {
+                    title: "",
+                    description: "",
+                    totalSteps: 0,
+                },
+                sourceLines: [],
+            };
+            // For some reason it throws an error about useStore().getCurrentLesson potentially being null
+            // even though this is checked at the top. The dummy information above will never be used.
+
+            for(let i = (useStore().getCurrentStepAttributes.sourceLineNum ?? 1) - 1; i < currentLesson.sourceLines.length; i++) {
                 // Add lines to the returned list until </step> is read
-                buildReturn.push(this.appStore.getCurrentLesson.sourceLines[i]);
-                if(this.appStore.getCurrentLesson.sourceLines[i].includes("</step")) {
+                buildReturn.push(currentLesson.sourceLines[i]);
+                if(currentLesson.sourceLines[i].toLowerCase().includes("</step")) { // This could break if someone decided to include '</step' in a text section for some reason...
                     break;
                 }
             }
 
             return buildReturn;
         },
+
+        currentStepIsLatest() {
+            return useStore().isCurrentStepLastUnlocked ?? false;
+        },
+
+        disabledRequirements() {
+            return useStore().getLessonTestModeConfig.disableRequirements;
+        },
     },
 
     methods: {
-        // Handling refreshing the page every second for timers
-        startRefreshTick() {
-            this.refreshTick++; // initial update
-
-            if (this.refreshTimer) {
-                return;
-            }
-
-            if (!this.checkRefreshNeeded) { // do not continue the timer if it is not needed
-                return;
-            }
-
-            this.refreshTimer = window.setInterval(() => {
-                this.refreshTick++;
-            }, 1000);
-        },
-
-        stopRefreshTick() {
-            if (!this.refreshTimer) {
-                return;
-            }
-
-            clearInterval(this.refreshTimer);
-            this.refreshTimer = null;
-            this.refreshTick = 0;
-        },
-
         // Requirement cards
-        getRequirementStatusDetails(req: LessonRequirement): string {
-            return requirementStatusString(req).detailsText;
-        },
-
-        getRequirementStatusProgressString(req: LessonRequirement): string {
-            return requirementStatusString(req).progressText;
-        },
-
-        getRequirementStatusCardColour(req: LessonRequirement): string {
-            return requirementStatusString(req).status ? this.cardGreen : this.cardRed;
-        },
-
-        // Hint cards
-        getHintHeaderText(hint: LessonHint): string {
-            // Add text shortening code here if its needed
-            return hint.message ?? "Error loading Hint text.";
-        },
-
-        getHintStatusCardColour(hint: LessonHint): string { 
-            if(hint.requirements.length == 0) {
-                // Hint is automatically fulfilled when there are no requirements
-                return this.cardGreen;
+        updateCards(): void {
+            if(!useStore().getCurrentStepAttributes) {
+                return;
             }
-            return getIncompleteRequirements(hint.requirements).length == 0 ? this.cardGreen : this.cardRed;
+
+            // Requirement status is only needed for the most recently unlocked Step, since the values are only being tracked for that Step
+            const reqsDisabled = !useStore().isCurrentStepLastUnlocked;
+            const currentStep = useStore().getCurrentStepAttributes;
+            this.reqCards = currentStep.requirements.map((req) => requirementStatusString(req, reqsDisabled));
+            this.hintCards = currentStep.hints.map((hint) => {
+                const reqs = hint.requirements.map((req) => requirementStatusString(req, reqsDisabled));
+                return {
+                    hintText: hint.message,
+                    reqs,
+                    status: reqs.every((r) => r.status), // .every holds when all reqs have status = true
+                };
+            });
+        },
+
+        statusCardColour(status: boolean): string {
+            if(!useStore().isCurrentStepLastUnlocked) {
+                // Do not show status for non-computed requirements
+                return this.cardDull;
+            }
+            return status ? this.cardGreen : this.cardRed;
+        },
+
+        returnToStep(): void {
+            // For the case where it isn't the last step unlocked, this button locks future steps to pretend that it is.
+            // This allows requirements to start being tracked again
+            // currentStepIndex doesn't need to change since we are already there.
+            useStore().lessonLockFutureSteps();
+            resetRequirementValues();
+            setTimeout(() => {
+                this.updateCards();
+            }, 50); // Refreshes page after updates with a slight delay to account for new requirement values
         },
     },
 });
@@ -348,6 +358,24 @@ export default Vue.extend({
 
 .source-text-alt-line {
   background-color: #f5f5f5;
+}
+
+.return-to-step-button {
+    all: unset; //remove browser defaults for consistency across browsers
+    border: 2px solid #000000;
+    background: #ffffff;
+    color: rgb(0, 0, 0);
+    cursor: pointer;
+    width: 140px;
+    height: 30px;
+    border-radius: 10px; //rounded edges without oval shape
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.return-to-step-button:hover {
+    background: #e0e0e0;
 }
 
 </style>
