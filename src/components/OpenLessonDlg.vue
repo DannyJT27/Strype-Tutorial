@@ -32,7 +32,7 @@
                     Done
                 </b-button>
             </template>
-            <template v-else-if="modalPage === 'parsing'">
+            <template v-else-if="modalPage === 'parsing' || modalPage === 'uploading'">
                 <b-button variant="secondary" @click="modalPage = 'list'">
                     Back
                 </b-button>
@@ -133,6 +133,11 @@
                 If this takes more than a few seconds, try refreshing the page.
             </div>
 
+            <!-- PAGE 'parsing' - A small, brief loading message whilst a lesson file is being parsed -->
+            <div class="open-lesson-dlg-parsing-message" v-if="modalPage === 'uploading'">
+                Uploading Lesson File...
+            </div>
+
             <!-- PAGE 'error' - Shows the errors returned from the parsing -->
             <div class="open-lesson-dlg-main-message" v-if="modalPage === 'error'">
                 The selected Lesson File <i>'{{ lessonParseResult ? lessonParseResult.details.title : "Unnamed Lesson"}}'</i> returned errors upon being loaded. 
@@ -158,12 +163,13 @@ import { mapStores } from "pinia";
 import ModalDlg from "@/components/ModalDlg.vue";
 import { getExampleLessons } from "@/helpers/exampleLessons";
 import { Lesson, LessonMetadata, LessonParseResult } from "@/types/types";
-import { parseFullLessonFile } from "@/helpers/lessonFileParser";
+import { getParserConfig, parseFullLessonFile } from "@/helpers/lessonFileParser";
 import { startLesson, updateTestModeSettings } from "@/helpers/runningLessonHandler";
 import { getMetadataPointsList } from "@/helpers/lessonMetadataPoints";
 import LessonDetailsPreview from "./LessonDetailsPreview.vue";
 import { loadLessonProject } from "../helpers/runningLessonHandler";
 import App from "@/App.vue";
+import { openFile } from "@/helpers/filePicker";
 
 // Info to display when lessonParseResult happens to be null
 const errorLoadingLesson: Lesson = {
@@ -187,7 +193,8 @@ export default Vue.extend({
             modalPage: "list", // This modal has multiple 'pages' to display, dictated by this value
             // list - List of lessons to choose from, as well as the option to open 'Test Lesson File' and the option to upload a new lesson.
             // edit - List of uploaded lesson to be able to delete them.
-            // parsing - Brief loading screen, plus error display for when an invalid file is uploaded.
+            // parsing - Brief loading screen
+            // uploading - Brief loading screen
             // error - The uploaded/loaded lesson file has errors which prevent it from being run. As this is the student's experience, there is no option to fix them.
             // runLesson - The uploaded/loaded lesson file is ready to run. Just displays some confirming info to the student before they start it.
 
@@ -236,6 +243,49 @@ export default Vue.extend({
             this.lessonsStored.reverse();
         },
 
+        getLessonFileFromPC(): Promise<string> {
+            return new Promise((resolve) => {
+                // Code here was adapted from Menu.vue's upload logic
+                const parserConfig = getParserConfig();
+                openFile(
+                    [{
+                        description: "Strype Lesson File",
+                        accept: {
+                            "text/plain": [parserConfig.LESSON_FILE_SUFFIX],
+                        },
+                    }],
+                    "documents",
+                    async (fileHandles) => {
+                        if (!fileHandles || fileHandles.length === 0) {
+                            alert("No file was uploaded.");
+                            resolve("");
+                            return;
+                        }
+
+                        const fileHandle = fileHandles[0];
+                        const file = await fileHandle.getFile();
+
+                        // Check file type
+                        if (!file.name.endsWith(parserConfig.LESSON_FILE_SUFFIX) && !file.name.endsWith(".txt")) {
+                            alert("Invalid file type uploaded. Please upload a " + parserConfig.LESSON_FILE_SUFFIX + " file.");
+                            resolve("");
+                            return;
+                        }
+
+                        if (file.size > parserConfig.MAX_FILE_SIZE_BYTES) {
+                            alert("Uploaded file exceeds maximum size of " + (parserConfig.MAX_FILE_SIZE_BYTES / 1024) + "KB.");
+                            resolve("");
+                            return;
+                        }
+
+                        const result = await file.text();
+
+                        resolve(result);
+                    }
+                );
+            });
+        },
+
         getMetadataPoints(lesson: LessonMetadata) {
             return getMetadataPointsList(lesson);
         },
@@ -244,7 +294,7 @@ export default Vue.extend({
             this.$emit("open-create-new-lesson"); // Sends message to Menu.vue
         },  
 
-        clickContinue() {
+        async clickContinue() {
             // Method to handle clicking the 'Continue' button. Since there are multiple different 'pages' on this modal, the usual OK function can't be used
             // The specific action that is taken will depend on a) the current page, and b) the selected lesson file
 
@@ -252,19 +302,37 @@ export default Vue.extend({
                 // The list page is the displayed list of available lesson files to run, as well as the option to upload a new lesson file
                 if(this.selectedLessonIndex == -1) {
                     // -1 is the designated index for the Upload selection
+                    if(this.uploadedLessonsCount > 10) { // max uploaded lessons
+                        alert("Maximum amount of uploaded Lessons. Please remove uploaded Lessons in the 'Edit Uploaded Lessons' section to free up space.");
+                        return;
+                    }
 
-                    //TBC
+                    this.modalPage = "uploading";
+                    const returnedFile = await this.getLessonFileFromPC(); // add different upload types in the future if there is time, such as google drive or onedrive
+                    if(returnedFile == "") {
+                        this.modalPage = "list"; // the error will have already been displayed, just go back to list page
+                        return;
+                    }
+                    
+                    this.modalPage = "parsing";
+                    this.lessonParseResult = parseFullLessonFile(returnedFile.split("\n"));
+                    this.appStore.newLoadedLesson({ // uploads the file even with errors for consistency
+                        sourceLines: returnedFile.split("\n"),
+                        details: this.lessonParseResult.details,
+                    });
+                    // since the logic of the run page relies on it, we update the local loaded lessons list and select the new lesson
+                    await this.updateAvailableLessons();
+                    this.selectedLessonIndex = 0; // newest uploaded lesson will be at 0
                 }
                 else {
                     // Any other index implies an already uploaded Lesson was selected
                     this.modalPage = "parsing"; // Instantly display a loading screen, which will persist until the lesson is parsed. Should only last a few milliseconds.
-
                     this.lessonParseResult = parseFullLessonFile(this.lessonsStored[this.selectedLessonIndex].sourceLines);
-
-                    // With the parse result stored, set the page to either 'error' or 'lesson', depending on the presence of errors.
-                    // Does not use the .success boolean, as this only determines whether the file was fully parsed, which can still have some errors present.
-                    this.modalPage = this.lessonParseResult.debugMessages.some((m) => ["error", "fatal"].includes(m.messageType)) ? "error" : "runLesson";
                 }
+
+                // With the parse result stored, set the page to either 'error' or 'lesson', depending on the presence of errors.
+                // Does not use the .success boolean, as this only determines whether the file was fully parsed, which can still have some errors present.
+                this.modalPage = this.lessonParseResult.debugMessages.some((m) => ["error", "fatal"].includes(m.messageType)) ? "error" : "runLesson";
             }
             else if(this.modalPage == "edit") {
                 // Important that nothing is done here. Buttons on the edit page can be double clicked to trigger this method. We do not want that to delete it.

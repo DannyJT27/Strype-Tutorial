@@ -25,9 +25,9 @@ export interface LessonParserConfiguration {
     ALLOW_REQUIREMENTS_IN_STEP_NEST: boolean,
     
     MAX_HINTS_PER_STEP: number,
-    MAX_INITIAL_PYTHON_SIZE_BYTES: number,
     MAX_LESSON_STEPS: number,
     MIN_LESSON_STEPS: number,
+    MAX_LENGTH_CONSOLE_OUTPUT: number,
     MAX_LENGTH_DESCRIPTION: number,
     MAX_LENGTH_HAS_PYTHON: number,
     MAX_LENGTH_HINT_TEXT: number,
@@ -42,6 +42,7 @@ export interface LessonParserConfiguration {
     LESSON_FILE_SUFFIX: string,
     MAX_FILE_LINES: number,
     MAX_FILE_SIZE_BYTES: number,
+    MAX_INITIAL_PYTHON_SIZE_BYTES: number,
 
     DEBUG_LOG_END_RESULTS: boolean,
     DEBUG_LOG_TOKENS: boolean,
@@ -68,24 +69,25 @@ const parserConfig: LessonParserConfiguration = {
   
     // Number values, mainly for min/max's to enforce limits to inputted data
     MAX_HINTS_PER_STEP: 4,                      // Maximum amount of hints that one step can have.
-    MAX_INITIAL_PYTHON_SIZE_BYTES: 20480,         // Maximum character length for the Initial Python File section. Lessons should be starting on small projects anyway.
     MAX_LESSON_STEPS: 40,                       // Maximum steps in one lesson file. Current graphics start to break at 42+ steps, so this is a good number to settle on.
     MIN_LESSON_STEPS: 2,                        // MINIMUM amount of steps for a valid lesson file.
-    MAX_LENGTH_DESCRIPTION: 400,                // Maximum amount of characters for the Lesson description.
-    MAX_LENGTH_HAS_PYTHON: 150,                 // Maximum length for <has-python> section.
-    MAX_LENGTH_HINT_TEXT: 200,                  // Maximum length for <text> section inside a Hint.
-    MAX_LENGTH_STEPREF: 30,                     // Maximum length for each stepRef.
-    MAX_LENGTH_STEP_TEXT: 800,                  // Maximum length for text in a Step. Note that this limit is much higher than a Step Panel can display without a scrollbar.
-    MAX_LENGTH_TITLE: 100,                      // Maximum amount of characters for the Lesson title.
-    MAX_REQ_ARG_FAILED_ATTEMPTS: 8,             // Maximum argument value for <failed-attempts X> Requirement for hints. 
-    MAX_REQ_ARG_TIME_PASSED: 300,               // Maximum argument value for <time-passed X> Requirement, where X is in seconds.
+    MAX_LENGTH_CONSOLE_OUTPUT: 200,             // Maximum character length for <console-output> section.
+    MAX_LENGTH_DESCRIPTION: 400,                // Maximum character length for the Lesson description.
+    MAX_LENGTH_HAS_PYTHON: 200,                 // Maximum character length for <has-python> section.
+    MAX_LENGTH_HINT_TEXT: 200,                  // Maximum character length for <text> section inside a Hint.
+    MAX_LENGTH_STEPREF: 30,                     // Maximum character length for each stepRef.
+    MAX_LENGTH_STEP_TEXT: 800,                  // Maximum character length for text in a Step. Note that this limit is much higher than a Step Panel can display without a scrollbar.
+    MAX_LENGTH_TITLE: 100,                      // Maximum character length for the Lesson title.
+    MAX_REQ_ARG_FAILED_ATTEMPTS: 8,             // Maximum argument value for <failed-attempts N> Requirement for hints. 
+    MAX_REQ_ARG_TIME_PASSED: 300,               // Maximum argument value for <time-passed N> Requirement, where N is in seconds.
     MAX_REQUIREMENTS_PER_HINT: 4,               // Maximum amount of requirements that one HINT can have. Needs to be lower for memory usage limitations.
     MAX_REQUIREMENTS_PER_STEP: 10,              // Maximum amount of requirements that one STEP can have.
 
     // Lesson File specific details
-    LESSON_FILE_SUFFIX: ".txt",                 // The file type used for Lesson Files, affecting downloads and uploads where necessary.
-    MAX_FILE_LINES: 1500,                       // Maximum lines that a valid lesson file can contain. Assumes upper bound of ~15 lines per Step + extra for initial file.
+    LESSON_FILE_SUFFIX: ".spyl",                // The file type used for Lesson Files, affecting downloads and uploads where necessary.
+    MAX_FILE_LINES: 2000,                       // Maximum lines that a valid lesson file can contain. Assumes upper bound of ~20 lines per Step + extra for initial file + padding to be safe.
     MAX_FILE_SIZE_BYTES: 102400,                // Note: this is WAY larger than the Line and Step restrictions. This more avoids invalid file types from being uploaded.
+    MAX_INITIAL_PYTHON_SIZE_BYTES: 20480,       // Maximum character length for the Initial Python File section. Lessons should be starting on small projects anyway.
 
     // Debug switches, logging elements of the parser in the console if required
     DEBUG_LOG_END_RESULTS: false,               // Log the final results for a parsed lesson file.
@@ -205,14 +207,30 @@ export function parseFullLessonFile(sourceLines: string[]) : LessonParseResult {
 
                     // Cases where a token should end, as a tag has either been reached or ended
                     if(isTokenValidTag(currentToken)) {
-                        firstLineOfTextToken = lineNum; // more accurate error msgs in some cases
-                        evaluateTagToken(currentToken, currentNestLevels, lineNum + 1, parseResult, defaultStepTemplate, parserConfig);
+                        firstLineOfTextToken = lineNum; // Updates since it is no longer reading text
+                        evaluateTagToken(
+                            currentToken.replace("/>", ">"), //* see below
+                            currentNestLevels, 
+                            lineNum + 1, 
+                            parseResult, 
+                            defaultStepTemplate, 
+                            parserConfig
+                        );
+                        // * In the code above, currentToken has one method applied:
+                        // - .replaceAll() converts tags ending in /> to just >, allowing <tag> and <tag/> to be both allowed depending on user preference (<tag/> is common in other markups)
                     }
                     else {
-                        evaluateTextToken(currentToken.trim().replaceAll(/<#>[\s\S]*?<\/#>/g, ""), currentNestLevels, firstLineOfTextToken + 1, parseResult, defaultStepTemplate, parserConfig);
-                        // In the code above, currentToken has two methods applied:
+                        evaluateTextToken(
+                            currentToken.trim().replaceAll(/<#>[\s\S]*?<\/#>/g, ""), //* see below
+                            currentNestLevels,
+                            firstLineOfTextToken + 1, // More accurate debug messages when text covers multiple lines
+                            parseResult, 
+                            defaultStepTemplate, 
+                            parserConfig
+                        );
+                        // * In the code above, currentToken has two methods applied:
                         // - .trim() removes all whitespace before and after which can be generated by indentations and linebreaks (shouldn't punish good coding practice)
-                        // - .replaceAll removes all content that is commented with the <#> tag. The regex finds substrings that start with <#> and end with </#>.
+                        // - .replaceAll() removes all content that is commented with the <#> tag. The regex finds substrings that start with <#> and end with </#>.
                     }
                     
                     currentToken = "";

@@ -39,7 +39,7 @@
                     &gt;
                 </b-button>
                 <!-- Always show vvv -->
-                <b-button variant="secondary" @click="clickBackToOpenLesson(); cancel();">
+                <b-button variant="secondary" @click="clickBackToOpenLesson(); cancel();" :disabled="showDocumentation"> <!-- Disables when doc is open to avoid confusion -->
                     Back
                 </b-button>
                 <b-button variant="warning" @click="clickTestLesson()" :disabled="currentlyParsing || editorContent.length == 0">
@@ -259,27 +259,32 @@ export default Vue.extend({
             landingSelection: 1, // Selected button on the landing page. 1, 2, and 3 are selections
             starterText: [
                 "<metadata>",
-                "   <title>",
-                "       New Lesson",
-                "   </title>",
-                "   <description>",
-                "       Describe your Lesson here.",
-                "   </description>",
+                "    <title>",
+                "        New Lesson",
+                "    </title>",
+                "    <description>",
+                "        Describe your Lesson here.",
+                "    </description>",
                 "</metadata>",
                 "",
+                "<defaults>",
+                "    <panel-type popup-right>",
+                "</defaults>",
+                "",
                 "<step Step #1>",
-                "   <text>",
-                "       The first Step of many.",
-                "   </text>",
+                "    <text>",
+                "        The first Step of many.",
+                "    </text>",
                 "</step>",
                 "",
                 "<step Step #2>",
-                "   <text>",
-                "       What will you teach today?",
-                "   </text>",
-                "   <attributes>",
-                "       <colour-scheme blue>",
-                "   </attributes>",
+                "    <text>",
+                "        Now...",
+                "        What will you teach today?",
+                "    </text>",
+                "    <attributes>",
+                "        <colour-scheme blue>",
+                "    </attributes>",
                 "</step>",
             ], // Placeholder Lesson File for when starting a new one
 
@@ -383,7 +388,7 @@ export default Vue.extend({
                     const file = await fileHandle.getFile();
 
                     // Check file type
-                    if (!file.name.endsWith(parserConfig.LESSON_FILE_SUFFIX)) {
+                    if (!file.name.endsWith(parserConfig.LESSON_FILE_SUFFIX) && !file.name.endsWith(".txt")) {
                         alert("Invalid file type uploaded. Please upload a " + parserConfig.LESSON_FILE_SUFFIX + " file.");
                         return;
                     }
@@ -758,7 +763,6 @@ export default Vue.extend({
             if(editor.selectionStart != editor.selectionEnd) { // Doesn't do anything when nothing is selected
                 this.searchBarContent = editor.value.slice(editor.selectionStart, editor.selectionEnd).trim();
                 this.clickSearchDocumentation();
-                this.showDocumentation = true; // Incase it is clicked with documentation closed
             }
         },
 
@@ -769,6 +773,7 @@ export default Vue.extend({
             }
             else {
                 this.updateDocPage(this.searchBarContent, false, false, -1);
+                this.showDocumentation = true; // Incase it is clicked with documentation closed
             }
         },
 

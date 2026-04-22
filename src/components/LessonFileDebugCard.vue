@@ -110,7 +110,7 @@ export default Vue.extend({
         },
 
         formatDocWord(ref: string) {
-            const strippedWord = ref.replaceAll(/[!/]/g, "").replaceAll("nontag_", "").replaceAll("_inHint", "");
+            const strippedWord = ref.replaceAll(/[!/]/g, "").replaceAll("nontag_", "").replaceAll("_inHint", "").replaceAll("-", " ");
             return strippedWord[0].toUpperCase() + strippedWord.slice(1);
         },
 

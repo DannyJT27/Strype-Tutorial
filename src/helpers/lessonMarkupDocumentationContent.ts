@@ -65,7 +65,7 @@ export enum TagDisplay {
     WithCloserArg = "<$tag $argTypeShort>\n\t...\n </$tag>",
     WithNegation = "<$tag>, <!$tag>",
     WithNegationArg = "<$tag $argTypeShort>, <!$tag $argTypeShort>",
-    WithNegationCloser = "<$tag $argTypeShort>\n\t...\n </$tag>,\n<!$tag $argTypeShort>\n\t...\n </$tag>,\n",
+    WithNegationCloser = "<$tag>\n\t...\n </$tag>,\n<!$tag>\n\t...\n </$tag>,\n",
 }
 
 // Used to provide extra definitions where needed
@@ -155,7 +155,7 @@ function mapToCodeSegment(code: string[]): DocStringSegment[] {
 // ALL DOCUMENTATION PAGE CONTENT IS DEFINED BELOW
 export function searchPresentInDocPage(content: DocPageTree, search: string): boolean {
     const formattedSearch = search.trim().replaceAll(/[<>!/]/g, "").toLowerCase(); // Trims whitespace and removes < and > as individual characters
-    const formattedReference = formattedSearch.split(" ")[0]; // For when the user searches with a parameter, such as 'colour-scheme red'. The reference only looks for the tag name.
+    const formattedReference = searchRedirects(formattedSearch.split(" ")[0]); // For when the user searches with a parameter, such as 'colour-scheme red'. The reference only looks for the tag name.
 
     return (
         content.subsections.some((s) => s.reference.toLowerCase() === formattedReference) ||
@@ -169,12 +169,34 @@ export function searchPresentInDocPage(content: DocPageTree, search: string): bo
 // Used for finding scroll position
 export function matchSectionReferenceInDocPage(content: DocPageTree, search: string): string {
     const formattedSearch = search.trim().replaceAll(/[<>!/]/g, "").toLowerCase();
-    const formattedReference = formattedSearch.split(" ")[0];
+    const formattedReference = searchRedirects(formattedSearch.split(" ")[0]);
     const searchResult = content.subsections.find((s) =>
         s.reference.toLowerCase() === formattedReference ||
         s.name.toLowerCase() === formattedSearch);
 
     return searchResult ? searchResult.reference : "";
+}
+
+// Record of convinient redirects
+function searchRedirects(input: string): string {
+    const redirects: Record<string, string> = {
+        "color": "colour-scheme",
+        "colour": "colour-scheme",
+        "color-scheme": "colour-scheme",
+
+        "console": "console-output",
+
+        "initial": "initial-python-file",
+
+        "panel": "panel-type",
+
+        "python": "has-python",
+
+        "minimum": "min-requirements",
+        // can be extended when needed
+    };
+    
+    return redirects[input] ?? input;
 }
 
 export function getDocumentationContent(search: string): DocPageTree {
@@ -200,8 +222,13 @@ export function getDocumentationContent(search: string): DocPageTree {
     if(pageRecords[formattedReference]) {
         return pageRecords[formattedReference](config);
     }
-    
+
     // If this point is reached, the search keyword didn't match a page title.
+    // We do the same search but looking through the redirects list
+    if(pageRecords[searchRedirects(formattedReference)]) {
+        return pageRecords[searchRedirects(formattedReference)](config);
+    }
+    
     // Now we will search the page contents, which includes:
     // - The actual page title
     // - Every subsection's reference (what most documenation links use)
@@ -225,26 +252,18 @@ const SEE_MORE_SECTION = {
     keywords: [],
     extraText: [
         {tx: "General: "},
-        {tx: "Home", link: "nontag_home"},
-        {tx: "|"},
-        {tx: "Syntax", link: "nontag_syntax"},
-        {tx: "|"},
+        {tx: "Home", link: "nontag_home"}, {tx: "|"},
+        {tx: "Syntax", link: "nontag_syntax"}, {tx: "|"},
         {tx: "Examples", link: "nontag_examples"},
         {tx: "\nFoundations: "},
-        {tx: "Initial Python File", link: "hint"},
-        {tx: "|"},
-        {tx: "Metadata", link: "metadata"},
-        {tx: "|"},
+        {tx: "Initial Python File", link: "initial"}, {tx: "|"},
+        {tx: "Metadata", link: "metadata"}, {tx: "|"},
         {tx: "Defaults", link: "defaults"},
         {tx: "\nStep Content: "},
-        {tx: "Step", link: "step"},
-        {tx: "|"},
-        {tx: "Text", link: "text"},
-        {tx: "|"},
-        {tx: "Attributes", link: "attributes"},
-        {tx: "|"},
-        {tx: "Requirements", link: "requirments"},
-        {tx: "|"},
+        {tx: "Step", link: "step"}, {tx: "|"},
+        {tx: "Text", link: "text"}, {tx: "|"},
+        {tx: "Attributes", link: "attributes"}, {tx: "|"},
+        {tx: "Requirements", link: "requirements"}, {tx: "|"},
         {tx: "Hints", link: "hint"},
     ],
 } as DocPageNodeSection;
@@ -268,7 +287,7 @@ function docPageDefault(): DocPageTree {
 
 function docPage_nontag_home(cfg: LessonParserConfiguration): DocPageTree {
     const content = {
-        title: "Strype Lesson Markup Language Documentation",
+        title: "Strype Lesson (SPyL) Markup Language Documentation",
         description: [
             {tx: "A markup language designated for the creation of integrated Python Lessons within the Strype IDE."},
             DOC_LINE_BREAK,
@@ -365,7 +384,8 @@ function docPage_nontag_home(cfg: LessonParserConfiguration): DocPageTree {
                     {tx: " as well as whether they have been fulfilled."},
                     {tx: "Students running the Lesson normally will not have access to this panel, unless they open and run the Lesson through this editor"},
                     DOC_LINE_BREAK,
-                    {tx: "If you suspect that a student is running the Lesson in Test Mode to cheat, check for the 'VIEW DEBUG INFO' message in the bottom left of the Step's panel."},
+                    {tx: "If you suspect that a student is running the Lesson in Test Mode to cheat, check the information display in the top right."},
+                    {tx: "It will be green for a normal Lesson, and orange when in Test Mode."},
                 ],
             },
             {
@@ -373,8 +393,7 @@ function docPage_nontag_home(cfg: LessonParserConfiguration): DocPageTree {
                 reference: "nontag_share",
                 keywords: [],
                 extraText: [
-                    {tx: "Currently, Strype does not have a server-side that can be used to send Lesson Files to students."},
-                    {tx: "When your Lesson File is ready, download it from the editor and share that file with the students."},
+                    {tx: "When your Lesson File is ready, download it from the editor and share that file with students."},
                     {tx: "They will be able to upload the file to their own clients and run the Lesson as normal."},
                     DOC_LINE_BREAK,
                     {tx: "Note that if your Lesson makes use of an "},
@@ -417,6 +436,10 @@ function docPage_nontag_syntax(cfg: LessonParserConfiguration): DocPageTree {
                     {tx: " <step>\n", isCode: true},
                     {tx: "\t...[section content here]\n", isCode: true},
                     {tx: "</step>", isCode: true},
+                    DOC_LINE_BREAK,
+                    {tx: "The parser will trim all whitespace within a "},
+                    {tx: "Text Section,", link: "nontag_sections"},
+                    {tx: " which allows them to span multiple lines in the Lesson File."},
                     DOC_LINE_BREAK,
                     {tx: "The exact configuration of each Tag will be listed under its respective segment in the documentation."},
                 ],
@@ -709,6 +732,7 @@ function docPage_metadata(cfg: LessonParserConfiguration): DocPageTree {
                 name: "Description",
                 reference: "description",
                 tagInfo: {
+                    name: "description",
                     display: TagDisplay.WithCloser,
                     validNests: ["<metadata>", ...(cfg.ALLOW_METADATA_IN_ROOT ? [] : ["Base (no parent section)"])],
                 },
@@ -1086,7 +1110,7 @@ function docPage_attributes(cfg: LessonParserConfiguration): DocPageTree {
                 ],
             },
             {
-                name: "Hide Expected Requirement Values",
+                name: "Hide Expected Requirement Values?",
                 reference: "hide-expected-values",
                 tagInfo: {
                     name: "hide-expected-values",
@@ -1105,6 +1129,9 @@ function docPage_attributes(cfg: LessonParserConfiguration): DocPageTree {
                     {tx: "Step Requirement", link: "requirements"},
                     {tx: " has not been met, it will display a message to tell the student what they need to do, including the exact values needed where relevant."},
                     {tx: "Setting this Attribute to true will hide these values, instead only vaguely informing the student of what they need to do."},
+                    {tx: "For example, a Step with the "},
+                    {tx: "has-python Requirement", link: "has-python"},
+                    {tx: " will no longer reveal the Python segment it is looking for to the student."},
                     {tx: "\nIf this is set to true, ensure that the Step can still be solved with the information given in its "},
                     {tx: "Text", link: "text"},
                     {tx: " and its "},
@@ -1134,6 +1161,28 @@ function docPage_attributes(cfg: LessonParserConfiguration): DocPageTree {
                     {tx: "If not specified, the Step's default behaviour will be to enforce all Step Requirements."},
                     {tx: "\nThe argument value must be between 1 and the total number of Step Requirements inclusive."},
                     {tx: "\n\nDefault Value: total amount of Requirements in this Step (all must be fulfilled)."},
+                ],
+            },
+            {
+                name: "Panel Tall?",
+                reference: "panel-tall",
+                tagInfo: {
+                    name: "panel-tall",
+                    display: TagDisplay.WithArg,
+                    validNests: ["<attributes>", "<defaults>", ...(cfg.ALLOW_ATTRIBUTES_IN_STEP_NEST ? ["<step>"] : [])],
+                },
+                keywords: [
+                    DocKeywords.TagType_Data,
+                    DocKeywords.ExpectedArgs_Boolean,
+                    DocKeywords.ArgType_Boolean,
+                    DocKeywords.ValidNest_List,
+                    DocKeywords.Rule_Unique,
+                ],
+                extraText: [
+                    {tx: "Increases the height of a Step Panel by ~40%, allowing more "},
+                    {tx: "Text", link: "text"},
+                    {tx: " content to be displayed."},
+                    {tx: "\n\nDefault Value: false."},
                 ],
             },
             {
@@ -1204,24 +1253,6 @@ function docPage_requirements(cfg: LessonParserConfiguration): DocPageTree {
         ],
         subsections: [
             {
-                name: "Section Specification",
-                reference: "requirements_spec",
-                tagInfo: {
-                    name: "requirements",
-                    display: TagDisplay.WithCloser,
-                    validNests: ["<step>", "<hint>"],
-                },
-                keywords: [
-                    DocKeywords.TagType_DataSection,
-                    DocKeywords.ExpectedArgs_Zero,
-                    DocKeywords.ValidNest_List,
-                    ...(cfg.ALLOW_MULTIPLE_STEP_SUBSECTIONS ? [] : [DocKeywords.Rule_Unique]), // Conditional to config setup
-                ],
-                extraText: [
-                    {tx: "Contains all Requirement Tags, listed below."},
-                ],
-            },
-            {
                 name: "'Unlocking' a Step",
                 reference: "nontag_unlockstep",
                 keywords: [],
@@ -1278,6 +1309,24 @@ function docPage_requirements(cfg: LessonParserConfiguration): DocPageTree {
                 ],
             },
             {
+                name: "Section Specification",
+                reference: "requirements_spec",
+                tagInfo: {
+                    name: "requirements",
+                    display: TagDisplay.WithCloser,
+                    validNests: ["<step>", "<hint>"],
+                },
+                keywords: [
+                    DocKeywords.TagType_DataSection,
+                    DocKeywords.ExpectedArgs_Zero,
+                    DocKeywords.ValidNest_List,
+                    ...(cfg.ALLOW_MULTIPLE_STEP_SUBSECTIONS ? [] : [DocKeywords.Rule_Unique]), // Conditional to config setup
+                ],
+                extraText: [
+                    {tx: "Contains all Requirement Tags, listed below."},
+                ],
+            },
+            {
                 name: "Changes Made",
                 reference: "changes-made",
                 tagInfo: {
@@ -1300,6 +1349,30 @@ function docPage_requirements(cfg: LessonParserConfiguration): DocPageTree {
                 ],
             },
             {
+                name: "Console Output",
+                reference: "console-output",
+                tagInfo: {
+                    name: "console-output",
+                    display: TagDisplay.WithNegationCloser,
+                    validNests: ["<requirements>", "<hint>", ...(cfg.ALLOW_REQUIREMENTS_IN_STEP_NEST ? ["<step>"] : [])],
+                },
+                keywords: [
+                    DocKeywords.TagType_TextSection,
+                    DocKeywords.ExpectedArgs_Zero,
+                    DocKeywords.ValidNest_List,
+                ],
+                extraText: [
+                    {tx: "Uses a "},
+                    {tx: "Text Section", link: "nontag_sections"},
+                    {tx: " to specifiy a text segment that must be present in the code's console output."},
+                    {tx: "It is recommended to pair this with the "},
+                    {tx: "<run-code> Requirement", link: "run-code"},
+                    {tx: " to ensure that the console output is up to date."},
+                    DOC_LINE_BREAK,
+                    {tx: "Regular Condition: True iff student's console output contains the specified string."},
+                ],
+            },
+            {
                 name: "Failed Next Attempts",
                 reference: "failed-attempts",
                 tagInfo: {
@@ -1317,6 +1390,7 @@ function docPage_requirements(cfg: LessonParserConfiguration): DocPageTree {
                 ],
                 extraText: [
                     {tx: "Tracks the amount of times a student clicks the 'Next Step' button whilst having unfulfilled Step Requirements."},
+                    DOC_LINE_BREAK,
                     {tx: "This Requirement Type can only be used for "},
                     {tx: "Hints,", link: "hint"},
                     {tx: " allowing extra information to be accessibly only when the student is stuck."},

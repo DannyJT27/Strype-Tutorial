@@ -1284,6 +1284,7 @@ interface LessonStepAttributes {
     colourScheme?: string;
     hideRequirementExpectedValues?: boolean; // See lessonRequirementHandler.ts -> requirementMessage()
     minRequirements?: number;
+    panelTall?: boolean;
 }
 
 export interface LessonRequirement {

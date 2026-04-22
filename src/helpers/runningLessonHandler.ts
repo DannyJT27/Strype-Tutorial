@@ -22,7 +22,7 @@ export function startLesson(parseResult: LessonParseResult, source: string[]): v
     }
 
     // All store-related actions required to set up a Lesson
-    // This is run AFTER starting a new project or the uploading of an initial file if needed, so that is handled beforehand and assumed to be complete by this point.
+    // This is run AFTER starting a new project or the uploading of an initial file if needed, so that is called beforehand and assumed to be complete by this point.
 
     // -- Stop the previous lesson if necessary
     stopCurrentLesson();
@@ -30,6 +30,10 @@ export function startLesson(parseResult: LessonParseResult, source: string[]): v
     // -- Load information into the store
     useStore().setLessonStepsArray(parseResult.steps);
     useStore().setCurrentLessonObject({details: parseResult.details, sourceLines: source});
+    useStore().setTimeLessonStartedToNow();
+    useStore().setLessonCompleted(false);
+    useStore().setLessonEndScreenShown(false);
+
 
     // -- Jump to specified starting step if applicable
     if(useStore().getLessonInTestMode) {
@@ -37,23 +41,31 @@ export function startLesson(parseResult: LessonParseResult, source: string[]): v
     }
 
     // -- Reset Requirement values in case the first step has any
-    resetRequirementValues(); // Handles all requirement-related values
+    resetRequirementValues();
 
     // -- Set running lesson back to true now that the new data is ready
     useStore().setIsRunningLessonStatus(true);
 }
 
+export function completeLesson(): void {
+    // Runs whenever the end screen is opened, but only does things if its the first time
+    if(!useStore().getLessonCompleted) {
+        useStore().setLessonCompleted(true);
+        useStore().setTimeLessonEndedToNow();
+    }
+    useStore().setLessonEndScreenShown(true); // show end screen
+}
+
 export function loadLessonProject(parseResult: LessonParseResult, source: string[], root: InstanceType<typeof App>, ignoreInitial?: boolean): void {
     // Handles either uploading the initial project file, or emtpying the IDE upon starting a lesson.
-    // The code here is taken from Menu.vue's loadProject() method, which can't be exported from a component.
-    // It skips the file-related stuff since the file is already in string format, and opens the file making use of the App.vue methods through root.
+    // Same logic as Menu.vue's loadProject() method, except it skips all the file-loading parts since the file is already available as a string
     if(!parseResult.details.initialFileType || !parseResult.details.initialFileFirstLine || ignoreInitial) {
         // No initial file. 
         // This needs to clear the editor entirely, which is done by just 'opening' an empty .py file (since the existing 'new project' functionality just refreshes the page)
         // A .spy file could be slightly faster, but it contains IDE settings which would override the user's settings.
         root.setStateFromPythonFile(
             " ",
-            parseResult.details.title + ".py",
+            parseResult.details.title.slice(0, 50) + ".py",
             Date.now(),
             true
         );
@@ -62,12 +74,14 @@ export function loadLessonProject(parseResult: LessonParseResult, source: string
         // Has initial file, which the parser will have already marked:
         const initialFileContent = source.slice(parseResult.details.initialFileFirstLine, -1).join("\n");
 
-        root.setStateFromPythonFile(
-            initialFileContent,
-            parseResult.details.title + "." + parseResult.details.initialFileType,
-            Date.now(),
-            true
-        );
+        if(initialFileContent) {
+            root.setStateFromPythonFile(
+                initialFileContent,
+                parseResult.details.title.slice(0, 50) + "." + parseResult.details.initialFileType,
+                Date.now(),
+                true
+            );
+        }
     }
 }
 

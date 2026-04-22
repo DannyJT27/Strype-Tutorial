@@ -1,92 +1,129 @@
 <template>
-    <div class="step-panel-base"> <!-- Full height and width of parent div. The positioning of the panel is controlled in App.vue -->
-        <div class="step-panel-progress-bar">
-            <!-- Note that 'v-for' starts for loops at 1, hence why i-1 is used -->
-            <button 
-                v-for="i in totalLessonSteps" :key="i"
-                class="step-panel-progress-bar-button"
-                :class="[progressBarButtonSubclass(i - 1), 'scheme-' + getColourScheme]"
-                @click="jumpToStep(i - 1)"
-            />
+    <div class="step-panel-base"> 
+        <div 
+            v-if="panelHidden" 
+            class="step-panel-hidden" 
+            :class="['step-panel-content' , 'scheme-' + getColourScheme]"
+            @click="clickSetHidePanel(false)"
+        >
+            Show Lesson Panel
         </div>
-        <div :class="['step-panel-content' , 'scheme-' + getColourScheme]">
-            <!-- Top Content Div - Progress Counter and misc buttons -->
-            <div class="step-panel-content-top">
-                <p class="step-panel-progress-number-text">
-                    {{ progressCountDisplay }}
-                </p>
-                <div class="step-panel-button-wrapper" :style="{ paddingTop: '4px' }">
-                    <!-- Hide Panel Button - only appears on certain panel types that cover the editor -->
-                    <button class="step-panel-button-misc" @click="runparser">
-                        <img src="@/assets/images/hide-panel-icon.svg" :style="{maxWidth: '95%', height: 'auto'}">
-                    </button>
-                    <!-- Hint Button - always appears, but will be disabled when a hint is unavailable -->
-                    <button
-                        id="show-hint-button" 
-                        class="step-panel-button-misc" 
-                        @click="showHint" 
-                        :disabled="stepDetails.hints.length < 1 || !currentStepIsLatest"
-                    > <!-- TBC: Hints currently expire when the step is passed, maybe add a hint attribute to change this?-->
-                        ?
-                    </button>
-                    <!-- Popover connected to the Hint button to display a hint message -->
-                    <b-popover
-                        target="show-hint-button"
-                        triggers="manual"
-                        placement="top"
-                        :show.sync="showHintMessage"
-                    >
-                        {{ hintMessageDisplay }}
-                    </b-popover>
-                </div>
+        <div 
+            v-else-if="showingEndScreen" 
+            style="align-items: center; text-align: center; padding: 20px; gap: 10px;"
+            :class="['step-panel-content' , 'scheme-' + getColourScheme]"
+        >
+            <div class="step-panel-end-screen-text" style="font-weight: bold; color: #033d00; font-style: italic; font-size: 34px;">
+                Lesson Complete!
             </div>
-
-            <!-- Middle Content Div - Actual text content imported from the Step's data -->
-            <div class="step-panel-content-middle">
-                <div class="step-panel-text-scrolling-wrapper">
-                    <p class="step-panel-main-text" :style="{textAlign: 'center', fontSize: '1.1em'}">  <!-- TBC PLACEHOLDER TEXT STYLING -->
-                        {{ stepDetails.textContent }}
+            <div class="step-panel-end-screen-text">
+                '{{ lessonTitle }}'
+            </div>
+            <div class="step-panel-end-screen-text" style="margin-top: auto; font-size: 24px;">
+                {{ getCompletionTimeDisplay() }}
+                <span v-if="runningTestMode"><br><b>Return to the editor to download this Lesson File.</b></span>
+            </div>
+            <button class="step-panel-button-finish-lesson" style="margin-top: auto;" @click="clickFinishLesson">
+                Finish Lesson
+            </button>
+            <div class="step-panel-end-screen-text" style="font-size: 16px; font-style: italic;">
+                (Your code will not be erased)
+            </div>
+            <div style="width: 100%;">
+                <button class="step-panel-button-arrow" @click="clickBackFromCompletePage">
+                    &lt;
+                </button>
+            </div>
+        </div>
+        <div v-else class="step-panel-base"> <!-- Full height and width of parent div. The positioning of the panel is controlled in App.vue -->
+            <div class="step-panel-progress-bar">
+                <!-- Note that 'v-for' starts for loops at 1, hence why i-1 is used -->
+                <button 
+                    v-for="i in totalLessonSteps" :key="i"
+                    class="step-panel-progress-bar-button"
+                    :class="[progressBarButtonSubclass(i - 1), 'scheme-' + getColourScheme]"
+                    @click="jumpToStep(i - 1)"
+                />
+            </div>
+            <div :class="['step-panel-content' , 'scheme-' + getColourScheme]">
+                <!-- Top Content Div - Progress Counter and misc buttons -->
+                <div class="step-panel-content-top">
+                    <p class="step-panel-progress-number-text">
+                        {{ progressCountDisplay }}
                     </p>
+                    <div class="step-panel-button-wrapper" :style="{ paddingTop: '4px' }">
+                        <!-- Hide Panel Button - only appears on certain panel types that cover the editor -->
+                        <button class="step-panel-button-misc" @click="clickSetHidePanel(true)">
+                            <img src="@/assets/images/hide-panel-icon.svg" :style="{maxWidth: '95%', height: 'auto'}">
+                        </button>
+                        <!-- Hint Button - always appears, but will be disabled when a hint is unavailable -->
+                        <button
+                            id="show-hint-button" 
+                            class="step-panel-button-misc" 
+                            @click="showHint" 
+                            :disabled="stepDetails.hints.length < 1 || !currentStepIsLatest"
+                        >
+                            ?
+                        </button>
+                        <!-- Popover connected to the Hint button to display a hint message -->
+                        <b-popover
+                            target="show-hint-button"
+                            triggers="manual"
+                            placement="top"
+                            :show.sync="showHintMessage"
+                        >
+                            {{ hintMessageDisplay }}
+                        </b-popover>
+                    </div>
                 </div>
-            </div>
-            
-            <!-- Bottom Content Div - Arrow buttons and TEST MODE text -->
-            <div class="step-panel-content-bottom">
-                <p 
-                    class="step-panel-test-mode-text"
-                    v-if="runningTestMode"
-                    @click="openTestModeDlg"
-                > 
-                    &nbsp;VIEW DEBUG INFO
-                </p>
-                <LessonTestModeDlg ref="testModeDlg" :dlgId="testModeDlgId" v-if="runningTestMode"/> <!-- Modal component, all data for it is handled inside the component .vue file -->
-                <div class="step-panel-button-wrapper">
-                    <!-- Prev Step Arrow - Disabled on first step -->
-                    <button 
-                        class="step-panel-button-arrow" 
-                        @click="prevStep" 
-                        :disabled="appStore.isLessonOnFirstStep"
-                    >
-                        &lt;
-                    </button>
-                    <!-- Next Step Arrow - Changes colour when Requirements are not fulfilled -->
-                    <button 
-                        id="next-step-button" 
-                        class="step-panel-button-arrow" 
-                        @click="tryNextStep" 
-                        :style="{ backgroundColor: (currentStepIsLatest && incompleteStepReqs.length > 0) ? '#ffc267' : ''}"
-                    >
-                        &gt;
-                    </button>
-                    <!-- Popover connected to the Next Step button to display unfulfilled Requirement guidance -->
-                    <b-popover
-                        target="next-step-button"
-                        triggers="manual"
-                        placement="top"
-                        :show.sync="showRequirmentMessage"
-                    >
-                        {{ requirementMessageDisplay }}
-                    </b-popover>
+
+                <!-- Middle Content Div - Actual text content imported from the Step's data -->
+                <div class="step-panel-content-middle">
+                    <div class="step-panel-text-scrolling-wrapper">
+                        <p class="step-panel-main-text" :style="{textAlign: 'center', fontSize: '1.1em'}">
+                            {{ stepDetails.textContent }}
+                        </p>
+                    </div>
+                </div>
+                
+                <!-- Bottom Content Div - Arrow buttons and TEST MODE text -->
+                <div class="step-panel-content-bottom">
+                    <p 
+                        class="step-panel-test-mode-text"
+                        v-if="runningTestMode"
+                        @click="openTestModeDlg"
+                    > 
+                        &nbsp;VIEW DEBUG INFO
+                    </p>
+                    <LessonTestModeDlg ref="testModeDlg" :dlgId="testModeDlgId" v-if="runningTestMode"/> <!-- Modal component, all data for it is handled inside the component .vue file -->
+                    <div class="step-panel-button-wrapper">
+                        <!-- Prev Step Arrow - Disabled on first step -->
+                        <button 
+                            class="step-panel-button-arrow" 
+                            @click="prevStep" 
+                            :disabled="currentStepIsFirst"
+                        >
+                            &lt;
+                        </button>
+                        <!-- Next Step Arrow - Changes colour when Requirements are not fulfilled -->
+                        <button 
+                            id="next-step-button" 
+                            class="step-panel-button-arrow" 
+                            @click="tryNextStep" 
+                            :style="{ backgroundColor: (currentStepIsLatest && incompleteStepReqs.length > 0) ? '#ffc267' : ''}"
+                        >
+                            &gt;
+                        </button>
+                        <!-- Popover connected to the Next Step button to display unfulfilled Requirement guidance -->
+                        <b-popover
+                            target="next-step-button"
+                            triggers="manual"
+                            placement="top"
+                            :show.sync="showRequirmentMessage"
+                        >
+                            {{ requirementMessageDisplay }}
+                        </b-popover>
+                    </div>
                 </div>
             </div>
         </div>
@@ -105,11 +142,11 @@
 //////////////////////
 import Vue from "vue";
 import { useStore } from "@/store/store";
-import { mapStores } from "pinia";
 import scssVars from "@/assets/style/_export.module.scss";
 import { LessonStepDetails, StepPanelType, LessonRequirement } from "@/types/types";
 import { getIncompleteRequirements, requirementMessage, resetRequirementValues } from "@/helpers/lessonRequirementHandler";
 import LessonTestModeDlg from "@/components/LessonTestModeDlg.vue";
+import { completeLesson, stopCurrentLesson } from "@/helpers/runningLessonHandler";
 
 //////////////////////
 //     Component    //
@@ -149,8 +186,6 @@ export default Vue.extend({
     },
 
     computed: {
-        ...mapStores(useStore),
-
         scssVars() {
             // just to be able to use in template
             return scssVars;
@@ -160,62 +195,79 @@ export default Vue.extend({
             return StepPanelType;
         },
 
+        lessonTitle(): string {
+            return useStore().getCurrentLesson?.details.title ?? "Unnamed Lesson"; // Default value is green for Strype Colour Scheme
+        },
+
         // Loads the information of the currently selected step from the store
         stepDetails(): LessonStepDetails {
             // Component should only be displayed when there is valid step information in the store (handled in App.vue)
-            return this.appStore.getCurrentStepAttributes ?? errorLessonStepDisplay;
+            return useStore().getCurrentStepAttributes ?? errorLessonStepDisplay;
         },
         
         totalLessonSteps() {
-            return this.appStore.getTotalLessonSteps ?? 0;
+            return useStore().getTotalLessonSteps ?? 0;
         },
 
         unlockedLessonSteps() {
-            return this.appStore.getUnlockedLessonStepIndex ?? 0;
+            return useStore().getUnlockedLessonStepIndex ?? 0;
+        },
+
+        currentStepIsFirst() {
+            return useStore().getCurrentLessonStepIndex == 0;
         },
 
         currentStepIsLatest() {
-            return this.appStore.isCurrentStepLastUnlocked ?? false;
+            return useStore().isCurrentStepLastUnlocked ?? false;
         },
 
         runningTestMode() {
-            return this.appStore.getLessonInTestMode ?? false;
+            return useStore().getLessonInTestMode ?? false;
         },
 
         // Builds the progress display in the top left of the component
         progressCountDisplay(): string {
-            if(this.appStore.getTotalLessonSteps > 0) {
-                return (this.appStore.getCurrentLessonStepIndex + 1) + "/" + this.appStore.getTotalLessonSteps;
+            if(useStore().getTotalLessonSteps > 0) {
+                return (useStore().getCurrentLessonStepIndex + 1) + "/" + useStore().getTotalLessonSteps;
             }
             return "?/?"; // Failsafe
         },
 
         requirementMessageDisplay(): string {
             if(this.incompleteStepReqs.length > 0) {
-                return requirementMessage(this.incompleteStepReqs[0], this.appStore.getCurrentStepAttributes.attributes.hideRequirementExpectedValues ?? false);
+                return requirementMessage(this.incompleteStepReqs[0], useStore().getCurrentStepAttributes.attributes.hideRequirementExpectedValues ?? false);
             }
             return "";
         },
 
         hintMessageDisplay(): string {
-            if(this.appStore.getCurrentStepAttributes.hints.length > this.hintDisplayIndex && this.hintDisplayIndex != -1) {
-                return this.appStore.getCurrentStepAttributes.hints[this.hintDisplayIndex].message;
+            if(useStore().getCurrentStepAttributes.hints.length > this.hintDisplayIndex && this.hintDisplayIndex != -1) {
+                return useStore().getCurrentStepAttributes.hints[this.hintDisplayIndex].message;
             }
 
-            return "Give the task a go first! Come back here later for help if you need it.";
+            return useStore().getLessonInTestMode 
+                ? "No Hints are currently enabled due to unfulfilled Requirements."  // test mode exclusive
+                : "Give the task a go first! Come back here later for help if you need it." ;
             // ^ Note that this message will only display when there ARE hints on this step, but all of them are locked behind requirements. 
             // When there are no hints at all, the button is disabled.
             // If an educator wants to overwrite this message, they can simply put the new message in a hint with no requirements.
         },
 
         getColourScheme(): string {
-            return this.appStore.getCurrentStepAttributes.attributes.colourScheme ?? "green"; // Default value is green for Strype Colour Scheme
+            return useStore().getCurrentStepAttributes.attributes.colourScheme ?? "green"; // Default value is green for Strype Colour Scheme
         },
 
         testModeDlgId(): string {
             return "test-mode-modal-dlg";
         },
 
+        panelHidden(): boolean {
+            return useStore().getLessonStepPanelHidden;
+        },
+
+        showingEndScreen(): boolean {
+            return useStore().getLessonEndScreenShown ?? false; // Default value is green for Strype Colour Scheme
+        },
     },
 
     methods: {
@@ -227,18 +279,18 @@ export default Vue.extend({
                 this.showHintMessage = false;
             }
 
-            const currentStep = this.appStore.getCurrentStepAttributes;
+            const currentStep = useStore().getCurrentStepAttributes;
 
             // Checks 3 conditions:
             // 1. whether the current step index is the furthest unlocked one, as requirements only apply to this step.
             // 2. whether the current step has requirements assigned to it.
             // 3. whether disableRequirements is toggled (if in test mode)
-            if(this.appStore.isCurrentStepLastUnlocked && currentStep.requirements.length > 0 && !(this.appStore.getLessonInTestMode && this.appStore.getLessonTestModeConfig.disableRequirements) ) {
+            if(useStore().isCurrentStepLastUnlocked && currentStep.requirements.length > 0 && !(useStore().getLessonInTestMode && useStore().getLessonTestModeConfig.disableRequirements) ) {
                 // All requirements must be fulfilled in order for the user to go to the next step
                 this.incompleteStepReqs = getIncompleteRequirements(currentStep.requirements);
 
                 if (!this.failedAttemptCooldownTimer) {
-                    this.appStore.lessonIncNextStepFailedAttempts(); // +1 to the attempts counter
+                    useStore().lessonIncNextStepFailedAttempts(); // +1 to the attempts counter
                     this.failedAttemptCooldownTimer = window.setTimeout(() => {
                         this.failedAttemptCooldownTimer = null; // Clear timer after the cooldown expires
                     }, 3000);
@@ -251,9 +303,16 @@ export default Vue.extend({
 
                 // Only go next when enough requirements are fulfilled
                 if(currentStep.requirements.length - (currentStep.attributes.minRequirements ?? currentStep.requirements.length) >= this.incompleteStepReqs.length) {
-                    this.appStore.lessonIncStepIndex();
-                    resetRequirementValues(); // <- Must be called after incStepIndex
-                    this.incompleteStepReqs = getIncompleteRequirements(currentStep.requirements);
+                    if(useStore().isLessonOnLastStep) {
+                        // Instead of incrementing step index, show end screen
+                        completeLesson();
+                    }
+                    else {
+                        useStore().lessonIncStepIndex();
+                        resetRequirementValues(); // <- Must be called after incStepIndex
+                        this.incompleteStepReqs = getIncompleteRequirements(currentStep.requirements);
+                        
+                    }
                     this.showRequirmentMessage = false;
                 }
                 else {
@@ -266,18 +325,22 @@ export default Vue.extend({
             }
             else {
                 // The code above does not run when no requirements are present, even when on the latest step
-                if(this.appStore.isCurrentStepLastUnlocked) {
-                    this.appStore.lessonIncStepIndex();
+                if(useStore().isLessonOnLastStep) {
+                    // Instead of incrementing step index, show end screen
+                    completeLesson();
+                }
+                else if(useStore().isCurrentStepLastUnlocked) {
+                    useStore().lessonIncStepIndex();
                     resetRequirementValues();
                     // Structured like this because isCurrentStepLastUnlocked needs to be checked 
                     // before incrementing, but resetRequirementValues can only be run after incrementing.
                 }
                 else {
-                    this.appStore.lessonIncStepIndex();
+                    useStore().lessonIncStepIndex();
                 }
 
                 // Check again for isCurrentStepLastUnlocked after incrementing to see if requirements need to be updated
-                if(this.appStore.isCurrentStepLastUnlocked && currentStep.requirements.length > 0) {
+                if(useStore().isCurrentStepLastUnlocked && currentStep.requirements.length > 0) {
                     // Update requirement checks, but only if needed (when next step is last one unlocked)
                     this.incompleteStepReqs = getIncompleteRequirements(currentStep.requirements);
                 }
@@ -286,7 +349,7 @@ export default Vue.extend({
 
         prevStep(): void {
             // This will only be called when there is a previous step. The button will be disabled when this isn't the case.
-            this.appStore.lessonDecStepIndex();
+            useStore().lessonDecStepIndex();
 
             // Hide popovers
             if (this.requirementMessagePopoverTimer) {
@@ -300,7 +363,7 @@ export default Vue.extend({
         },
 
         jumpToStep(index: number): void {
-            this.appStore.lessonSetStepIndex(index);
+            useStore().lessonSetStepIndex(index);
 
             // Hide popovers
             if (this.requirementMessagePopoverTimer) {
@@ -322,7 +385,7 @@ export default Vue.extend({
             }
 
             // Obtain a list of all hints that have their requirements fully completed by filtering out hints with incomplete requirements
-            const validHints = this.appStore.getCurrentStepAttributes.hints.filter((h) => getIncompleteRequirements(h.requirements).length == 0);
+            const validHints = useStore().getCurrentStepAttributes.hints.filter((h) => getIncompleteRequirements(h.requirements).length == 0);
 
             // If no unlocked hints, set index to 0 to return a placeholder message and break early
             if(validHints.length == 0) {
@@ -333,7 +396,7 @@ export default Vue.extend({
                 const hintToDisplay = validHints[0];
 
                 // Find the index of the hint in the original full list and set hintDisplayIndex accordingly
-                this.hintDisplayIndex = this.appStore.getCurrentStepAttributes.hints.findIndex((h) => h === hintToDisplay);
+                this.hintDisplayIndex = useStore().getCurrentStepAttributes.hints.findIndex((h) => h === hintToDisplay);
             }
 
             // Now that the hint is chosen, show the popover
@@ -347,6 +410,18 @@ export default Vue.extend({
             }, 6000);
         },
 
+        clickSetHidePanel(hidden: boolean) {
+            useStore().setLessonStepPanelHidden(hidden);
+        },
+
+        clickBackFromCompletePage() {
+            useStore().setLessonEndScreenShown(false);
+        },
+
+        clickFinishLesson() {
+            stopCurrentLesson();
+        },
+
         /* Used to determine the colour a progress bar segment should display
          * 'completed' - Step is completed and can be jumped to, current selected step is ahead of it
          * 'current' - Step is currently selected
@@ -355,14 +430,14 @@ export default Vue.extend({
          */
         progressBarButtonSubclass(index: number): string {
             // Note that this method just returns a CSS subclass. The actual designs of each button are handled in <style>.
-            if (index < this.appStore.getCurrentLessonStepIndex) {
+            if (index < useStore().getCurrentLessonStepIndex) {
                 return "completed";
             }
-            if (index == this.appStore.getCurrentLessonStepIndex) {
+            if (index == useStore().getCurrentLessonStepIndex) {
                 return "current";
             }
-            // If here is reached, then index > this.appStore.currentLessonStepIndex
-            if (index <= this.appStore.getUnlockedLessonStepIndex) {
+            // If here is reached, then index > useStore().currentLessonStepIndex
+            if (index <= useStore().getUnlockedLessonStepIndex) {
                 return "unlocked";
             }
             // If here is reached, then the step is locked
@@ -375,205 +450,11 @@ export default Vue.extend({
             this.$root.$emit("bv::show::modal", this.testModeDlgId);
         },
 
-        //TEMP METHODS
-        runparser() { // does a bunch of testing related stuff
-            this.appStore.lessonResetStepIndexes();
-            this.appStore.lessonResetNextStepFailedAttempts();
-            this.appStore.lessonSetTimeNewStepOpened();
-            this.appStore.setLessonInTestModeStatus(true);
-
-            //add a valid file and a slightly imperfect file to the list of uploaded files
-            this.appStore.clearLoadedLessonFiles();
-            this.appStore.newLoadedLesson({
-                sourceLines: [
-                    "<metadata><title>Uploaded Lesson 1</title>",
-                    "<description>This lesson file has no errors.</description>",
-                    "<difficulty HARD></metadata>",
-                    "<defaults><colour-scheme orange><panel-type bar></defaults>",
-                    "<step Step 1>",
-                    "   <text>This is an uploaded lesson file with no errors or suggestions to display.</text>",
-                    "   <attributes><panel-type central-focus></attributes>",
-                    "</step>",
-                    "<STEP Step 2>",
-                    "   <text>Write a print statement saying 'Hello World'.</text>",
-                    "   <requirements><time-passed 5><no-errors></requirements>",
-                    "</step>",
-                    "<step Step 3>",
-                    "   <text>Now give it a try.</text>",
-                    "   <hint>",
-                    "       <text>You should run your code.</text>",
-                    "       <failed-attempts 1>",
-                    "   </hint>",
-                    "   <requirements><run-code></requirements>",
-                    "</step>",
-                    "<step Step 4>",
-                    "   <text>Great job!</text>",
-                    "   <attributes><color-scheme green></attributes>",
-                    "</step>",
-                ],
-                details: {
-                    title: "Uploaded Lesson 1",
-                    description: "This lesson file has no errors.",
-                    totalSteps: 4,
-                    difficulty: "hard",
-                    estimatedTime: 15,
-                },
-            });
-
-            this.appStore.newLoadedLesson({
-                sourceLines: [
-                    "<metadata><title>Uploaded Lesson 2</title>",
-                    "<description>This lesson file has a lot of errors.</description><time-passed 20></metadata>",
-                    "<defaults><colour-scheme red><panel-type popup-left></defaults>",
-                    "<step Step 1>",
-                    "   <text>Some text content that you shouldn't be able to see</text>",
-                    "   <panel-type bar>",
-                    "</step>",
-                    "<step>",
-                    "   <text></text>",
-                    "   <requirements><time-passed 99999></requirements>",
-                    "</step>",
-                    "<step Step 3>",
-                    "   <hint>",
-                    "       <text></text>",
-                    "       <failed-attempts 20>",
-                    "   </hint>",
-                    "   <requirements><run-code>",
-                    "</step>",
-                ],
-                details: {
-                    title: "Uploaded Lesson 2",
-                    description: "This lesson file has a lot of errors.",
-                    totalSteps: 3,
-                    difficulty: "2-star",
-                },
-            });
-
-            this.appStore.newLoadedLesson({
-                sourceLines: [
-                    "<metadata><title>Uploaded Lesson 3</title>",
-                    "<description>This lesson file has no errors but some warnings</description></metadata>",
-                    "<defaults><attributes><colour-scheme blue><panel-type popup-left></attributes></defaults>",
-                    "<step Step 1>",
-                    "   <text>Some text content</text>",
-                    "   <panel-type bar>",
-                    "</step>",
-                    "<step>",
-                    "   <text>Hello</text>",
-                    "   <requirements><time-passed 99999></requirements>",
-                    "</step>",
-                ],
-                details: {
-                    title: "Uploaded Lesson 3",
-                    description: "This lesson file has no errors but some warnings",
-                    totalSteps: 2,
-                    difficulty: "extreme",
-                    estimatedTime: 30,
-                },
-            });
-
-            this.appStore.newLoadedLesson({
-                sourceLines: [
-                    "<metadata>",
-                    "<title>",
-                    "    New Lesson",
-                    "</title>",
-                    "<description>",
-                    "    Describe your Lesson here.",
-                    "</description>",
-                    "</metadata>",
-                    "",
-                    "<step Step #1>",
-                    "<text>",
-                    "    The first Step of many.",
-                    "</text>",
-                    "</step>",
-                    "",
-                    "<step Step #2>",
-                    "<text>",
-                    "    What will you teach today?",
-                    "</text>",
-                    "<attributes>",
-                    "    <colour-scheme blue>",
-                    "</attributes>",
-                    "</step>",
-                    "<#> !!! DO NOT EDIT BELOW THIS LINE !!! </#>",
-                    "<initial-python-file spy>",
-                    "#(=> Strype:1:std",
-                    "#(=> peaLayoutMode:tabsCollapsed",
-                    "#(=> peaCommandsSplitterPane2Size:{\"undefined\":68.42,\"tabsCollapsed\":48.22}",
-                    "#(=> Section:Imports",
-                    "#(=> Section:Definitions",
-                    "#(=> Section:Main",
-                    "print(\"Hello World\") ",
-                    "if true  :",
-                    "    print(\"This is an initial file\") ",
-                    "#(=> Section:End",
-                    "",
-                    "</initial-python-file>",
-                ],
-                details: {
-                    title: "Spy File Lesson",
-                    description: "This lesson has a spy file",
-                    totalSteps: 2,
-                    difficulty: "extreme",
-                },
-            });
-
-            this.appStore.newLoadedLesson({
-                sourceLines: [
-                    "<metadata>",
-                    "<title>",
-                    "    Python",
-                    "</title>",
-                    "<description>",
-                    "    Describe your Lesson here.",
-                    "</description>",
-                    "</metadata>",
-                    "",
-                    "<step Step #1>",
-                    "<text>",
-                    "    Python Initial File.",
-                    "</text>",
-                    "</step>",
-                    "",
-                    "<step Step #2>",
-                    "<text>",
-                    "    What will you teach today?",
-                    "</text>",
-                    "<attributes>",
-                    "    <colour-scheme blue>",
-                    "</attributes>",
-                    "</step>",
-                    "<#> !!! DO NOT EDIT BELOW THIS LINE !!! </#>",
-                    "<initial-python-file py>",
-                    "print(\"Hello World\") ",
-                    "if true  :",
-                    "    print(\"This is an initial file as a .py\") ",
-                    "",
-                    "print(\"yo\") ",
-                    "",
-                    "</initial-python-file>",
-                ],
-                details: {
-                    title: "Py File Lesson",
-                    description: "This lesson has a py file",
-                    totalSteps: 2,
-                    difficulty: "extreme",
-                },
-            });
-
-            // use this for files made by testers
-            /*this.appStore.newLoadedLesson({
-                sourceLines: [
-
-                ],
-                details: {
-                    title: "",
-                    description: "",
-                    totalSteps: 1,
-                },
-            });*/
+        getCompletionTimeDisplay(): string {
+            const difference = useStore().getTimeLessonEnded - useStore().getTimeLessonStarted;
+            const minutes = Math.floor(difference / 60000);
+            const seconds = Math.floor((difference - (minutes * 60000)) / 1000);
+            return ("Completed in " + minutes + " minutes and " + seconds + " seconds.");
         },
     },
 });
@@ -630,6 +511,22 @@ export default Vue.extend({
     background: black;
     display: flex;
     flex-direction: column;
+}
+
+.step-panel-hidden {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-weight: bold;
+    color: black;
+    line-height: 1.2;
+}
+
+.step-panel-hidden:hover {
+    cursor: pointer;
+    filter: brightness(1.5);
+    color: rgb(46, 46, 46);
 }
 
 .step-panel-progress-bar {
@@ -729,7 +626,7 @@ export default Vue.extend({
     scrollbar-color: auto transparent; // Removes the background of the scroll bar when it is present (Firefox compatibility)
 }
 
-// Custom styled scrollbar (TBC: allegedly doesn't work on Firefox - will need to check)
+// Custom styled scrollbar
 .step-panel-text-scrolling-wrapper::-webkit-scrollbar {
     width: 4px;
 }
@@ -773,11 +670,11 @@ export default Vue.extend({
     text-shadow: 2px 2px 0 black; //better visibility - needed when bg colour is customisable
     // clickable design part
     cursor: pointer;
+}
 
-    &:hover {
-        color: white;
-        text-shadow: 0 0 6px gray, 0 0 12px gray;
-    }
+.step-panel-test-mode-text:hover {
+    color: white;
+    text-shadow: 0 0 6px gray, 0 0 12px gray;
 }
 
 //Allows multiple buttons to be positioned in a fixed row
@@ -841,6 +738,34 @@ export default Vue.extend({
 
 .step-panel-button-arrow:hover {
     background: #e0e0e0; //same as disabled colour so that it doesn't change
+}
+
+.step-panel-end-screen-text {
+    flex: 0;
+    color: black;
+    font-size: 30px;
+    white-space: normal;
+}
+
+.step-panel-button-finish-lesson {
+    all: unset; //remove browser defaults for consistency across browsers
+    border: 4px solid #000000;
+    background: #c9c9c9;
+    color: rgb(0, 0, 0);
+    cursor: pointer;
+    width: 200px;
+    height: 40px;
+    font-size: 25px;
+    border-radius: 1000px; //rounded edges without oval shape
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 0px; //better centering
+    box-shadow: 0px 0px 4px black;
+}
+
+.step-panel-button-finish-lesson:hover {
+    background: #ececec;
 }
 
 </style>

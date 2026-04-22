@@ -38,6 +38,7 @@ export function getMetadataPointsList(lessonDetails: LessonMetadata): MetadataPo
         "hard": ["Hard", pillColourSchemes["red"]],
         "advanced": ["Advanced", pillColourSchemes["red"]],
         "extreme": ["Extreme", pillColourSchemes["dark-red"]],
+        "challenge": ["Challenge", pillColourSchemes["dark-red"]],
         "1-star": ["☆☆☆☆★", pillColourSchemes["green"]],
         "2-star": ["☆☆☆★★", pillColourSchemes["yellow"]],
         "3-star": ["☆☆★★★", pillColourSchemes["orange"]],

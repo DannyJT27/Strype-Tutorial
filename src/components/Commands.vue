@@ -1,5 +1,5 @@
 <template>
-    <div class="commands">
+    <div class="commands" :style="{ height: viewportHeight + 'vh' }">
         /* IFTRUE_isPython
         <Splitpanes horizontal :class="{[scssVars.commandsPEASplitterThemeClassName]: true, [scssVars.expandedPEAClassName]: isExpandedPEA}" @resize="onCommandsSplitterResize">
             <pane key="1" ref="peaCommandsSplitterPane1Ref" :size="100 - commandsSplitterPane2Size" :min-size="commandSplitterPane1MinSize">
@@ -122,6 +122,12 @@ import SimpleMsgModalDlg from "@/components/SimpleMsgModalDlg.vue";
 
 export default Vue.extend({
     name: "Commands",
+
+    props: {
+        // Converting this element to a flexbox caused a lot of styling problems with code that I don't want to tamper,
+        // so as a workaround the height is passed as a prop instead and remains semi-fixed
+        viewportHeight: Number,
+    },
 
     components: {
         AddFrameCommand,
@@ -267,6 +273,10 @@ export default Vue.extend({
 
         progressPercentWidthStyle(): string {
             return "width: " + this.progressPercent + "%;";
+        },
+
+        isLessonRunning(): boolean {
+            return this.appStore.isRunningLesson ?? false;
         },
     },
 
@@ -942,7 +952,7 @@ export default Vue.extend({
     border-left: #383b40 1px solid;
     color: #252323;
     background-color: #E2E7E0;
-    height: 100vh;
+    //height: 100vh; moved to conditional style for lesson content (flex was causing internal elements to break)
     /* IFTRUE_isMicrobit */
     display: flex;
     flex-direction: column;

@@ -77,14 +77,19 @@
                         </div>
                         <!-- 'getLessonBeingRun' determines whether a panel should be displayed, but the position
                             is dependant on the type of panel that the current step is using. -->
-                        <div v-if="getLessonBeingRun && !isStepPanelTypeFullscreenFocus" class="step-panel-editor-sizing-wrapper">
-                            <div :class="getStepPanelTypeClass"> 
-                                <LessonStepPanel />
+                        <div v-if="getLessonBeingRun" class="step-panel-editor-sizing-wrapper">
+                            <div class="lesson-darkened-background-full" v-if="isStepPanelEndScreen || (isStepPanelTypeFullscreenFocus && !isStepPanelHidden)" />
+                            <div 
+                                :class="getStepPanelTypeClass"
+                                :style="{ height: getStepPanelHeight }"
+                            >
+                                <LessonStepPanel/>
                             </div>
                         </div>
                     </Pane>
                     <Pane key="2" ref="editorCommandsSplitterPane2" :size="editorCommandsSplitterPane2Size" class="no-print">
-                        <Commands :id="commandsContainerId" class="noselect" :ref="strypeCommandsRefId" />
+                        <RunningLesson v-if="getLessonBeingRun" :paneWidth="editorCommandsSplitterPane2Size" @changeCommandsHeight="updateCommandsSectionHeight"/>
+                        <Commands :id="commandsContainerId" class="noselect" :ref="strypeCommandsRefId" :viewportHeight="getLessonBeingRun ? commandsDynamicHeight : 100"/>
                     </Pane>
                 </SplitPanes>
             </div>
@@ -106,12 +111,6 @@
                     <br/>
                 </div>
             </ModalDlg>
-        </div>
-        <div v-if="getLessonBeingRun && isStepPanelTypeFullscreenFocus"> <!-- Central Step Panel that dims the background for focus -->
-            <div class="lesson-darkened-background-full" />
-            <div class="step-panel-editor-centre-highlighted">
-                <LessonStepPanel />
-            </div>
         </div>
     </div>
 </template>
@@ -158,6 +157,7 @@ import {loadDivider} from "@/helpers/load-save";
 import FrameHeader from "@/components/FrameHeader.vue";
 import { stopCurrentLesson } from "./helpers/runningLessonHandler";
 import LessonStepPanel from "@/components/LessonStepPanel.vue";
+import RunningLesson from "./components/RunningLesson.vue";
 
 let autoSaveTimerId = -1;
 let projectSaveFunctionsState : ProjectSaveFunction[] = [];
@@ -182,6 +182,7 @@ export default Vue.extend({
         Splitpanes,
         Pane,
         LessonStepPanel,
+        RunningLesson,
     },
 
     data: function() {
@@ -200,6 +201,8 @@ export default Vue.extend({
             imgToEditInDialog: "",
             soundToEditInDialog: null as AudioBuffer | null,
             showImgPreview: (() => {}) as (dataURL: string) => void,
+            commandsDynamicHeight: 96,
+            hideStepPanel: false,
         };
     },
 
@@ -349,20 +352,60 @@ export default Vue.extend({
         },
 
         getStepPanelTypeClass(): string {
+            if(this.isStepPanelEndScreen) {
+                return "step-panel-editor-end-screen";
+            }
+
+            if(this.isStepPanelHidden) {
+                return "step-panel-editor-hidden";
+            }
+
             //Mapping of each ENUM PanelType to its respective CSS class
             const panelClassMap: Record<StepPanelType, string> = {
                 [StepPanelType.LEFT_POPUP]: "step-panel-editor-left-corner",
                 [StepPanelType.RIGHT_POPUP]: "step-panel-editor-right-corner",
-                [StepPanelType.BOTTOM_WIDTH]: "step-panel-editor-bottom",
-                [StepPanelType.FULLSCREEN_FOCUS_MODAL]: "", //This type is rendered in a seperate div, and is therefore not handled here.
+                [StepPanelType.BOTTOM_WIDTH]: "step-panel-editor-bar",
+                [StepPanelType.FULLSCREEN_FOCUS_MODAL]: "step-panel-editor-centre-highlighted",
             };
 
             return panelClassMap[this.appStore.getCurrentStepAttributes.attributes.panelType] ?? "";
         },
 
+        getStepPanelHeight(): string {
+            if(this.isStepPanelEndScreen || this.isStepPanelHidden) {
+                return "";
+            }
+
+            if(this.appStore.getCurrentStepAttributes.attributes.panelTall) {
+                // Panel height needs to increase by ~40%, which is different for individual panel types.
+                // Future change can involve breaking down css elements of each panel type into a map of values that can be individually altered
+                switch(this.appStore.getCurrentStepAttributes.attributes.panelType) {
+                case(StepPanelType.BOTTOM_WIDTH): // Default 160px
+                    return "225px";
+
+                case(StepPanelType.FULLSCREEN_FOCUS_MODAL): // Default 250px
+                    return "350px";
+
+                default: // Assumes 200px for remaining types
+                    return "280px";
+                }
+            }
+            else {
+                return ""; // Style is unchanged
+            }
+        },
+
         //Panel type that is rendered in its own div
         isStepPanelTypeFullscreenFocus(): boolean {
             return this.appStore.getCurrentStepAttributes.attributes.panelType == StepPanelType.FULLSCREEN_FOCUS_MODAL;
+        },
+
+        isStepPanelHidden(): boolean {
+            return this.appStore.getLessonStepPanelHidden;
+        },
+
+        isStepPanelEndScreen(): boolean {
+            return this.appStore.getLessonEndScreenShown;
         },
     },
 
@@ -1528,6 +1571,11 @@ export default Vue.extend({
 
             this.$root.$emit("bv::show::modal", "editSoundDlg");
         },
+
+        updateCommandsSectionHeight(newVal: number) {
+            // Receives a value from RunningLesson.vue to act as a flexbox height
+            this.commandsDynamicHeight = newVal;
+        },
     },
 
     provide() : { mediaPreviewPopupInstance : any, peaComponent: any, editImageInDialog : EditImageInDialogFunction, editSoundInDialog : EditSoundInDialogFunction} {
@@ -1922,8 +1970,37 @@ $divider-grey: darken($background-grey, 15%);
     height: 100%;
 }
 
+// Panel hovering in corner. Can be in the bottom left, bottom right, and top right.
+.step-panel-editor-hidden {
+    position: absolute; //stays in place
+    z-index: 503; // above editor but below menu
+    width: 80px;
+    height: 80px;
+    border: 1px solid black;
+    border-radius: 12px;
+    overflow: hidden; // for round corners
+    box-shadow: 0px 0px 10px black;
+    bottom: 25px;
+    right: 25px;
+}
+
+// Panel hovering in centre of screen with darkened background
+.step-panel-editor-end-screen {
+    position: fixed;
+    z-index: 1001; //above the dimmed background
+    top: 50%; //centred
+    left: 50%; //centred
+    transform: translate(-50%, -50%); //centred
+    width: 750px;
+    height: 400px;
+    border: 1px solid black;
+    border-radius: 12px;
+    overflow: hidden; // for round corners
+    box-shadow: 0px 0px 5px black;
+}
+
 // Panel fixed to the bottom of the editor splitpane
-.step-panel-editor-bottom {
+.step-panel-editor-bar {
     position: absolute; //keeps width of pane
     z-index: 503; // above editor but below menu
     bottom: 0;
@@ -1964,7 +2041,7 @@ $divider-grey: darken($background-grey, 15%);
 // Panel hovering in centre of screen with darkened background
 .step-panel-editor-centre-highlighted {
     position: fixed;
-    z-index: 10001; //above the dimmed background
+    z-index: 1001; //above the dimmed background
     top: 50%; //centred
     left: 50%; //centred
     transform: translate(-50%, -50%); //centred
@@ -1985,7 +2062,7 @@ $divider-grey: darken($background-grey, 15%);
     height: 100vh; // full screen
     background: black;
     opacity: 50%;
-    z-index: 10000; // covers everything - use with care
+    z-index: 1000; // covers everything besides modals
 }
 
 </style>

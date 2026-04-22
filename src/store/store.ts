@@ -250,6 +250,12 @@ export const useStore = defineStore("app", {
 
             unlockedLessonStepIndex: 0, // Stores the highest step reached in this session, used for jumping steps through the progress bar + requirements
 
+            lessonCompleted: false,
+
+            timeLessonStarted: 0, 
+
+            timeLessonEnded: 0,
+
             errorLessonStepDisplay: { // Used to ensure getters do not return UNDEFINED when expecting a LessonStepDetails
                 stepRef: "errorDisplayingStep",
                 attributes: {panelType: StepPanelType.LEFT_POPUP},
@@ -267,6 +273,10 @@ export const useStore = defineStore("app", {
                 disableRequirements: false,
                 enforceInitialFile: true,
             } as LessonTestModeConfig,
+
+            lessonStepPanelHidden: false,
+
+            lessonEndScreenShown: false,
 
             codeRanSinceLastStep: false, // Used for the <run-code> requirement
 
@@ -778,6 +788,10 @@ export const useStore = defineStore("app", {
         // Checks whether the user is currently looking at the furthest unlocked step, as requirements only apply to this step
         isCurrentStepLastUnlocked: (state) => {
             return state.currentLessonStepIndex == state.unlockedLessonStepIndex;
+        },        
+        
+        getLessonCompleted: (state) => {
+            return state.lessonCompleted;
         },
 
         // Steps besides the currently displayed one do not need to be accessed.
@@ -794,6 +808,14 @@ export const useStore = defineStore("app", {
 
         getTotalLessonSteps: (state) => {
             return state.currentLessonSteps.length;
+        },
+
+        getTimeLessonStarted: (state) => {
+            return state.timeLessonStarted;
+        },
+        
+        getTimeLessonEnded: (state) => {
+            return state.timeLessonEnded;
         },
 
         // Returns as Lesson[]
@@ -815,6 +837,14 @@ export const useStore = defineStore("app", {
 
         getLessonTestModeConfig: (state) => {
             return state.lessonTestModeConfig;
+        },
+
+        getLessonStepPanelHidden: (state) => {
+            return state.lessonStepPanelHidden;
+        },
+
+        getLessonEndScreenShown: (state) => {
+            return state.lessonEndScreenShown;
         },
 
         getHasRanCode: (state) => {
@@ -2625,7 +2655,6 @@ export const useStore = defineStore("app", {
                 let errorDetailMessage = payload.errorReason ?? "unknown reason";
                 let isVersionCorrect = false;
                 let newStateObj = {} as {[id: string]: any};
-                console.log(payload.stateJSONStr);
 
                 // If there is an error set because the file couldn't be retrieved
                 // we don't check anything, just get to the error display.
@@ -3254,6 +3283,26 @@ export const useStore = defineStore("app", {
             this.currentLessonObject = lesson;
         },
 
+        setLessonCompleted(status: boolean) {
+            this.lessonCompleted = status;
+        },
+
+        setTimeLessonStartedToNow() {
+            this.timeLessonStarted = Date.now();
+        },
+
+        setTimeLessonEndedToNow() {
+            this.timeLessonEnded = Date.now();
+        },
+
+        setLessonStepPanelHidden(status: boolean) {
+            this.lessonStepPanelHidden = status;
+        },
+
+        setLessonEndScreenShown(status: boolean) {
+            this.lessonEndScreenShown = status;
+        },
+
         // Modifying currentLessonStepIndex. Note that none of these functions update the displayed step, just the index.
 
         lessonIncStepIndex() {
@@ -3337,7 +3386,7 @@ export const useStore = defineStore("app", {
             this.nextStepFailedAttempts = 0;
         },
 
-        lessonSetTimeNewStepOpened() {
+        lessonSetTimeNewStepOpenedToNow() {
             this.timeNewStepOpened = Date.now();
         },
 

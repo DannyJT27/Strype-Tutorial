@@ -33,7 +33,7 @@ export function getIncompleteRequirements(reqList: LessonRequirement[]): LessonR
 // Handles the reseting of all requirement based values when starting a new lesson or reaching a new step
 export function resetRequirementValues(): void {
     useStore().lessonResetNextStepFailedAttempts(); // Reset attempts counter for next step
-    useStore().lessonSetTimeNewStepOpened(); // Marks the time that the next step was opened
+    useStore().lessonSetTimeNewStepOpenedToNow(); // Marks the time that the next step was opened
     useStore().setHasRanCode(false);
     if(stepHasRequirement(useStore().getCurrentStepAttributes, StepRequirementType.CHANGES_MADE)) {
         // For <changes-made> requirement, it stores the state of the code upon entering the Step. This is compared to the codebase to check for changes.
@@ -58,9 +58,14 @@ function checkRequirement(req: LessonRequirement): boolean {
         }
         break;
     
-    case (StepRequirementType.CONSOLE_OUTPUT):
+    case (StepRequirementType.CONSOLE_OUTPUT): { // {} allows const definition
+        // IMPORTANT: must be kept consistent with getPEAConsoleId()
+        const pythonConsole = document.getElementById("peaConsole") as HTMLTextAreaElement;
+        if(req.textValue && pythonConsole) {
+            status = pythonConsole.value.replace(/\s+/g, " ").toLowerCase().includes(req.textValue.replace(/\s+/g, " ").toLowerCase());
+        }
         break;
-
+    }
     case (StepRequirementType.FAILED_ATTEMPTS):
         status = useStore().getNextStepAttempts >= (req.numValue ?? 0);
         break;
@@ -71,7 +76,7 @@ function checkRequirement(req: LessonRequirement): boolean {
         if(req.textValue) {
             updateParsedCodeStore();
             if(parserElements) {
-                status = parserElements.parsedOutput.replace(/\s+/g, " ").includes(req.textValue.replace(/\s+/g, " "));
+                status = parserElements.parsedOutput.replace(/\s+/g, " ").toLowerCase().includes(req.textValue.replace(/\s+/g, " ").toLowerCase());
             }
         }
         break;
@@ -122,6 +127,12 @@ export function requirementStatusString(req: LessonRequirement, disabled: boolea
         break;
     
     case (StepRequirementType.CONSOLE_OUTPUT):
+        if(req.negated) {
+            details = "Expecting no instances of text in console output: '" + (req.textValue ?? "") + "'.";
+        }
+        else {
+            details = "Expecting console output: '" + (req.textValue ?? "") + "'.";
+        }
         break;
 
     case (StepRequirementType.FAILED_ATTEMPTS):

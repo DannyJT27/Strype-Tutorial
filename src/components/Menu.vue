@@ -1115,7 +1115,7 @@ export default Vue.extend({
             // Reset the temporary sync file flag
             this.tempSyncTarget = this.appStore.syncTarget;
             if(isSyncTargetCloudDrive(selectValue) || this.openSharedProjectId.length > 0 ){
-                (this.$refs[this.cloudDriveHandlerComponentId] as InstanceType<typeof CloudDriveHandler>).loadFile(selectValue); //TBC: LESSON REMOVAL ON CLOUD UPDATE
+                (this.$refs[this.cloudDriveHandlerComponentId] as InstanceType<typeof CloudDriveHandler>).loadFile(selectValue);
             }            
             else{               
                 // And let the user choose a file

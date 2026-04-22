@@ -39,7 +39,7 @@ export function fetchValidParameters(token: string): string[] {
         // IMPORTANT: lessonMetadataPoints.ts has its own map for displaying the data point.
         // When a new value is put here, it will also need to be added there.
         return ["easy", "beginner", "medium", "intermediate", "hard", 
-            "advanced", "extreme", "1-star", "2-star", "3-star", 
+            "advanced", "extreme", "challenge", "1-star", "2-star", "3-star", 
             "4-star", "5-star"];
 
     case("initial-python-file"):
@@ -78,8 +78,14 @@ interface LessonParseTokenContext {
 
 // Examines the file size and returns true if it should not be parsed
 export function evaluateInitialLessonFile(sourceLines: string[], parseResult: LessonParseResult, parserConfig: LessonParserConfiguration): boolean {
+    if(sourceLines.join().replace(/\s/g, "") == "") { // File is just whitespace
+        parseResult.debugMessages.push(fileFatalErrorMessage("FATAL - File has no content.", ""));
+        parseResult.success = false;
+        return true;
+    }
+
     if(sourceLines.join().length + parseResult.details.title.length > parserConfig.MAX_FILE_SIZE_BYTES) {
-        parseResult.debugMessages.push(fileFatalErrorMessage("FATAL - File exceeds maximum size. Lesson Files can only be " + Math.floor(parserConfig.MAX_FILE_SIZE_BYTES / 1024) + "KB at most (estimated " + Math.floor((sourceLines.join().length + parseResult.details.title.length) / 1024) + ").", ""));
+        parseResult.debugMessages.push(fileFatalErrorMessage("FATAL - File exceeds maximum size. Lesson Files can only be " + Math.floor(parserConfig.MAX_FILE_SIZE_BYTES / 1024) + "KB at most (estimated " + Math.floor((sourceLines.join().length + parseResult.details.title.length) / 1024) + "KB).", ""));
         parseResult.success = false;
         return true;
     }
@@ -109,7 +115,7 @@ export function evaluateTextToken(token: string, nestLevels: LessonParseNestSect
 
     // -- SILENT RETURN CASES --
     if(token.replace(/\s/g, "") == "") {
-        return; // Ignore and skip empty tokens, as the logic above may generate them
+        return; // Ignore and skip empty tokens
     }
 
     if(token[token.length - 1] == " ") {
@@ -137,7 +143,7 @@ export function evaluateTextToken(token: string, nestLevels: LessonParseNestSect
 
         // These elements could be edited
         stepRef: (nestLevels.length > 1 && nestLevels[1].nestLevel == "step") && parseResult.steps.length > 0 ? parseResult.steps[parseResult.steps.length - 1].stepRef : "", //Obtain stepRef from parseResult
-        docWord: nestLevels[nestLevels.length - 1].nestLevel, // Used to store a lookup for a tag's specific documentation info, used in debug messages
+        docWord: nestLevels.length == 1 ? "nontag_syntax" : nestLevels[nestLevels.length - 1].nestLevel, // Used to store a lookup for a tag's specific documentation info, used in debug messages
         currentNestLevels: nestLevels,
         thisNest: nestLevels[nestLevels.length - 1],
         defaultsStepTemplate: initialDefaultStep, // Modified by <defaults>, cloned by <step>
@@ -146,7 +152,7 @@ export function evaluateTextToken(token: string, nestLevels: LessonParseNestSect
     const currentStep = parseResult.steps.length > 0 ? parseResult.steps[parseResult.steps.length - 1] : initialDefaultStep;
 
     if(context.config.DEBUG_LOG_TOKENS) {
-        console.log("Detected text token: " + token + " at nest level " + context.thisNest.nestLevel);
+        console.log("Detected text token: \"" + token + "\" at nest level " + context.thisNest.nestLevel);
     }
 
     // -- INSTANT ERROR CASES --
@@ -186,6 +192,35 @@ export function evaluateTextToken(token: string, nestLevels: LessonParseNestSect
 
     // nest level "#" (comments) is handled in Silent Return cases above. No further logic is needed for the text token as it is simply a comment.
 
+    // Same logic regardless of negation status
+    if(context.thisNest.nestLevel == "console-output" || context.thisNest.nestLevel == "!console-output" ) { 
+        // [u] Content isn't too long
+        if(token.length > context.config.MAX_LENGTH_CONSOLE_OUTPUT) {
+            // This is enforced even when ALLOW_REQUIREMENTS_ABOVE_MAX_VALUES is set to true for memory usage considerations
+            parseResult.debugMessages.push(newDebugMessage("warning", "<" + context.thisNest.nestLevel + "> Requirement Text '" + token.slice(0, 32) + "...' shortened due to exceeding the character limit of " + context.config.MAX_LENGTH_CONSOLE_OUTPUT + ". If you need to match more content, make use of multiple seperate Requirements, as this Requirement type can be repeated.", context, 0));
+        }
+
+        // Update the requirement
+        currentStep.requirements[currentStep.requirements.length - 1].textValue = token.slice(0, context.config.MAX_LENGTH_CONSOLE_OUTPUT);
+        context.thisNest.contents.push("valid_token"); // Indicator that there is a valid text token within this nest
+        return;
+    }
+    
+    // Same logic regardless of negation status
+    if(context.thisNest.nestLevel == "console-output_inHint" || context.thisNest.nestLevel == "!console-output_inHint" ) { // HINT VARIANT
+        // [u] Content isn't too long
+        if(token.length > context.config.MAX_LENGTH_CONSOLE_OUTPUT) {
+            // This is enforced even when ALLOW_REQUIREMENTS_ABOVE_MAX_VALUES is set to true for memory usage considerations
+            parseResult.debugMessages.push(newDebugMessage("warning", "<" + context.thisNest.nestLevel + "> Requirement Text '" + token.slice(0, 32) + "...' shortened due to exceeding the character limit of " + context.config.MAX_LENGTH_CONSOLE_OUTPUT + ". If you need to match more content, make use of multiple seperate Requirements, as this Requirement type can be repeated.", context, 0));
+        }
+
+        // Update the requirement
+        const currentHint = currentStep.hints[currentStep.hints.length - 1];
+        currentHint.requirements[currentHint.requirements.length - 1].textValue = token.slice(0, context.config.MAX_LENGTH_CONSOLE_OUTPUT);
+        context.thisNest.contents.push("valid_token"); // Indicator that there is a valid text token within this nest
+        return;
+    }
+
     if(context.thisNest.nestLevel == "description") { 
         // [u] Title isn't too long
         if(token.length > context.config.MAX_LENGTH_DESCRIPTION) {
@@ -202,7 +237,7 @@ export function evaluateTextToken(token: string, nestLevels: LessonParseNestSect
         // [u] Content isn't too long
         if(token.length > context.config.MAX_LENGTH_HAS_PYTHON) {
             // This is enforced even when ALLOW_REQUIREMENTS_ABOVE_MAX_VALUES is set to true for memory usage considerations
-            parseResult.debugMessages.push(newDebugMessage("warning", "<" + context.thisNest.nestLevel + "> Requirement Text '" + token.slice(0, 32) + "...' shortened due to exceeding the character limit of " + context.config.MAX_LENGTH_HAS_PYTHON + ". If you need to match more Python content, make use of multiple seperate Requirements, as this Requirement type can be repeated.", context, 0));
+            parseResult.debugMessages.push(newDebugMessage("warning", "<" + context.thisNest.nestLevel + "> Requirement Text '" + token.slice(0, 32) + "...' shortened due to exceeding the character limit of " + context.config.MAX_LENGTH_HAS_PYTHON + ". If you need to match more content, make use of multiple seperate Requirements, as this Requirement type can be repeated.", context, 0));
         }
 
         // Update the requirement
@@ -216,7 +251,7 @@ export function evaluateTextToken(token: string, nestLevels: LessonParseNestSect
         // [u] Content isn't too long
         if(token.length > context.config.MAX_LENGTH_HAS_PYTHON) {
             // This is enforced even when ALLOW_REQUIREMENTS_ABOVE_MAX_VALUES is set to true for memory usage considerations
-            parseResult.debugMessages.push(newDebugMessage("warning", "<" + context.thisNest.nestLevel + "> Requirement Text '" + token.slice(0, 32) + "...' shortened due to exceeding the character limit of " + context.config.MAX_LENGTH_HAS_PYTHON + ". If you need to match more Python content, make use of multiple seperate Requirements, as this Requirement type can be repeated.", context, 0));
+            parseResult.debugMessages.push(newDebugMessage("warning", "<" + context.thisNest.nestLevel + "> Requirement Text '" + token.slice(0, 32) + "...' shortened due to exceeding the character limit of " + context.config.MAX_LENGTH_HAS_PYTHON + ". If you need to match more content, make use of multiple seperate Requirements, as this Requirement type can be repeated.", context, 0));
         }
 
         // Update the requirement
@@ -251,9 +286,6 @@ export function evaluateTextToken(token: string, nestLevels: LessonParseNestSect
         // [u] Text isn't too long
         if(token.length > context.config.MAX_LENGTH_STEP_TEXT) {
             parseResult.debugMessages.push(newDebugMessage("warning", "Step Text '" + token.slice(0, 32) + "...' shortened due to exceeding the character limit of " + context.config.MAX_LENGTH_STEP_TEXT + ".", context, 0));
-        }
-        else if(token.length > 275) { // Roughly the amount of chars before a scrollbar appears
-            parseResult.debugMessages.push(newDebugMessage("suggestion", "Step Text '" + token.slice(0, 32) + "...' is considerably long for a single Step and will likely have a scroll bar.", context, 0));
         }
 
         // Update the step
@@ -335,8 +367,8 @@ export function evaluateTagToken(token: string, nestLevels: LessonParseNestSecti
     // To check the expected functionality of any tag, refer to the documentation.
     // Tags which take parameters will have their list of valid inputs handled within the tagToken_ method for that Tag.
 
-    // Requirements with comments marked [u] are unique to that tags' context. 
-    // Requirements will only return early if the tag should be ignored, or parsing should cease due to a 'FATAL' error.
+    // Checks with comments marked [u] are unique to that tags' context. 
+    // Checks will only return early if the tag should be ignored, or parsing should cease due to a 'FATAL' error.
 
     // Use case for Debug Messages:
     // - Suggestions: messages to inform the user of better coding practice. The mentioned changes will have no effect beyond better code readability.
@@ -362,6 +394,9 @@ export function evaluateTagToken(token: string, nestLevels: LessonParseNestSecti
 
         "colour-scheme": (ctx, pr) => tagToken_colourScheme(ctx, pr),
         "color-scheme": (ctx, pr) => tagToken_colourScheme(ctx, pr), // Alternative spelling
+
+        "console-output": (ctx, pr) => tagToken_consoleOutput(ctx, pr),
+        "!console-output": (ctx, pr) => tagToken_consoleOutput(ctx, pr), // Requirement negation
 
         "defaults": (ctx, pr) => tagToken_defaults(ctx, pr),
 
@@ -391,6 +426,8 @@ export function evaluateTagToken(token: string, nestLevels: LessonParseNestSecti
 
         "no-errors": (ctx, pr) => tagToken_noErrors(ctx, pr),
         "!no-errors": (ctx, pr) => tagToken_noErrors(ctx, pr), // Requirement negation
+
+        "panel-tall": (ctx, pr) => tagToken_panelTall(ctx, pr),
 
         "panel-type": (ctx, pr) => tagToken_panelType(ctx, pr),
 
@@ -434,7 +471,7 @@ export function evaluateTagToken(token: string, nestLevels: LessonParseNestSecti
     // If this point is reached, then the tag has not been matched to any valid input. 
     // (if this message is shown for a valid tag, then that tag's if-condition is missing a return; at the end of its block)
     if(token[1] == "!") {
-        parseResult.debugMessages.push(newDebugMessage("suggestion", "Negation symbol '!' used on a non-Requirement Tag. Did you mean '/'?", context, 0, "")); // TBC DOCUMENTATION: NEGATION SYMBOL
+        parseResult.debugMessages.push(newDebugMessage("suggestion", "Negation symbol '!' used on a non-Requirement Tag. Did you mean '" + token.replace("!", "/") +  "?", context, 0, "nontag_negation"));
     }
     parseResult.debugMessages.push(newDebugMessage("warning", "Unknown tag: " + token + ". Check for typos and refer to the documentation for all of valid tags. This tag will be ignored.", context, 0, ""));
 }
@@ -449,11 +486,11 @@ function tagToken_REPLACETHIS(context: LessonParseTokenContext, parseResult: Les
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Nest Level Requirement:
+        // Nest Level check:
 
-        // Arguments Requirement:
+        // Arguments check:
 
-        // Uniqueness Requirement:
+        // Uniqueness check:
 
     }
     else { // closer tag
@@ -472,7 +509,7 @@ function tagToken_commentHashtag(context: LessonParseTokenContext, parseResult: 
     //const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Nest Level Requirement: any nest can take comments
+        // Nest Level check: any nest can take comments
 
         // Arguments Requirment: no args
         tagTokenHelper_noArgsGeneric(context, parseResult);
@@ -481,7 +518,7 @@ function tagToken_commentHashtag(context: LessonParseTokenContext, parseResult: 
         context.currentNestLevels.push({nestLevel: "#", contents: []}); 
     }
     else { // closer tag
-        // Basic nest level and args requirements for closing tags
+        // Basic nest level and args check for closing tags
         if(tagTokenHelper_closeTagGeneric(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -500,7 +537,7 @@ function tagTokenHelper_similarTagSuggestion(nestCheck: string[], potentialToken
     }
 }
 
-// Baseline 'no args' requirement.
+// Baseline 'no args' check.
 // No return needed as arguments are simply ignored
 function tagTokenHelper_noArgsGeneric(context: LessonParseTokenContext, parseResult: LessonParseResult, overrideMessage?: string) {
     if(context.tokenArgs.length > 1) {
@@ -528,14 +565,14 @@ function tagTokenHelper_noCloserTagNeeded(context: LessonParseTokenContext, pars
     parseResult.debugMessages.push(newDebugMessage("warning", "Unnecessary closing tag detected: <" + context.tokenArgs.join(" ") + ">. This tag type does not require a closer. The closer tag will be ignored.", context, 0));
 }
 
-// Covers the two main defaults requirements for (almost?) all closing tags:
+// Covers the two main defaults checks for (almost?) all closing tags:
 // - No arguments
 // - Valid opening tag (checked by nest level)
 // Returns 'true' when evaluateTagToken() needs to return early (ignore the tag).
 function tagTokenHelper_closeTagGeneric(context: LessonParseTokenContext, parseResult: LessonParseResult, variantSuffix?: string) : boolean {
     // Variant suffix is used to modify the required nest level for Variant tags (for example text_inHint)
 
-    // Nest Level Requirement: same as the token name without the / (e.g. /text requires text)
+    // Nest Level check: same as the token name without the / (e.g. /text requires text)
     if(context.thisNest.nestLevel != context.tokenArgs[0].slice(1) + (variantSuffix ?? "")) { //slice(1) removes the /
         parseResult.debugMessages.push(newDebugMessage("warning", "Invalid positioning for closing tag: <" + context.tokenArgs.join(" ") + ">, found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. No valid paired opening tag is detected. This tag will be ignored.", context, 0));
         return true;
@@ -552,14 +589,14 @@ function tagTokenHelper_mistypedCloserCheck(context: LessonParseTokenContext, pa
     // Nest Level is same as the token name
     if(context.thisNest.nestLevel == context.tokenArgs[0]) {
         if(context.config.CONTINUE_FROM_CLOSER_TYPO) {
-            parseResult.debugMessages.push(newDebugMessage("error", "Likely mistyped closer tag: <" + context.tokenArgs.join(" ") + ">. Closer tags must contain the closing symbol '/'. The parser will attempt to continue beyond this.", context, 0)); //TBC DOCUMENTATION: SECTIONS
+            parseResult.debugMessages.push(newDebugMessage("error", "Likely mistyped closer tag: <" + context.tokenArgs.join(" ") + ">. Closer tags must contain the closing symbol '/'. The parser will attempt to continue beyond this.", context, 0, "nontag_sections"));
         
             // Attempts to resolve the issue by removing the step nestLevel and continuing. Only continues to scan for more errors for convenience.
             context.currentNestLevels.pop();
             context.thisNest = context.currentNestLevels[context.currentNestLevels.length - 1];
         }
         else {
-            parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Likely mistyped closer tag: <" + context.tokenArgs.join(" ") + ">. Closer tags must contain the closing symbol '/'.", context, 0)); //TBC DOCUMENTATION: SECTIONS
+            parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Likely mistyped closer tag: <" + context.tokenArgs.join(" ") + ">. Closer tags must contain the closing symbol '/'.", context, 0, "nontag_sections"));
             parseResult.success = false;
         }
         return true;
@@ -573,14 +610,14 @@ function tagTokenHelper_subsectionMissingCloserCheck(potentialSubsections: strin
     // [u] Check for missing closing tags of other subsections
     if(potentialSubsections.includes(context.thisNest.nestLevel) && context.thisNest.nestLevel != context.tokenArgs[0]) {
         if(context.config.CONTINUE_FROM_MISSING_CLOSER) {
-            parseResult.debugMessages.push(newDebugMessage("error", "Likely missing closing tag </" + context.thisNest.nestLevel.split("_")[0] + ">. All section-based tags must have a closer. The parser will attempt to continue beyond this.", context, 0)); //TBC DOCUMENTATION: SECTIONS
+            parseResult.debugMessages.push(newDebugMessage("error", "Likely missing closing tag </" + context.thisNest.nestLevel.split("_")[0] + ">. All section-based tags must have a closer. The parser will attempt to continue beyond this.", context, 0, "nontag_sections"));
             
             // Attempts to resolve the issue by removing the step nestLevel and continuing. Only continues to scan for more errors for convenience.
             context.currentNestLevels.pop();
             context.thisNest = context.currentNestLevels[context.currentNestLevels.length - 1];
         }
         else {
-            parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Likely missing closing tag </" + context.thisNest.nestLevel.split("_")[0] + ">. All section-based tags must have a closer.", context, 0)); //TBC DOCUMENTATION: SECTIONS
+            parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Likely missing closing tag </" + context.thisNest.nestLevel.split("_")[0] + ">. All section-based tags must have a closer.", context, 0, "nontag_sections"));
             parseResult.success = false;
             return true;
         }
@@ -599,7 +636,7 @@ function tagToken_metadata(context: LessonParseTokenContext, parseResult: Lesson
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Nest Level Requirement: root (no nesting)
+        // Nest Level check: root (no nesting)
         if(context.thisNest.nestLevel != "root") {
             parseResult.debugMessages.push(newDebugMessage("warning", "Invalid positioning for Metadata tag: " + token + ", found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. The Metadata section should not be nested in other sections. This tag will be ignored.", context, 0));
             return;
@@ -608,7 +645,7 @@ function tagToken_metadata(context: LessonParseTokenContext, parseResult: Lesson
         // Arguments Requirment: no args
         tagTokenHelper_noArgsGeneric(context, parseResult);
 
-        // Uniqueness Requirement: one per file (potentially recommended but not enforced)
+        // Uniqueness check: one per file (potentially recommended but not enforced)
         if(context.thisNest.contents.includes("metadata")) {
             if(context.config.ALLOW_MULTIPLE_METADATA_SECTIONS) {
                 parseResult.debugMessages.push(newDebugMessage("suggestion", "Multiple <metadata> sections detected. It is recommended to have a single Metadata section kept at the top of the Lesson File.", context, 0));
@@ -629,7 +666,7 @@ function tagToken_metadata(context: LessonParseTokenContext, parseResult: Lesson
         context.currentNestLevels.push({nestLevel: context.tokenArgs[0], contents: []});
     }
     else { // closer tag
-        // Basic nest level and args requirements for closing tags
+        // Basic nest level and args checks for closing tags
         if(tagTokenHelper_closeTagGeneric(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -657,7 +694,7 @@ function tagToken_description(context: LessonParseTokenContext, parseResult: Les
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Nest Level Requirement: metadata (or root if allowed by ALLOW_METADATA_IN_ROOT)
+        // Nest Level check: metadata (or root if allowed by ALLOW_METADATA_IN_ROOT)
         if(context.thisNest.nestLevel == "root" && context.config.ALLOW_METADATA_IN_ROOT) {
             parseResult.debugMessages.push(newDebugMessage("suggestion", "Consider placing " + token + " subsection within the Lesson's <metadata> section for better organisation.", context, 0));
         } 
@@ -683,14 +720,14 @@ function tagToken_description(context: LessonParseTokenContext, parseResult: Les
         context.currentNestLevels.push({nestLevel: context.tokenArgs[0], contents: []}); // Only needs to add nest level, evaluateTextToken() handles the rest
     }
     else { // closer tag
-        // Basic nest level and args requirements for closing tags
+        // Basic nest level and args checks for closing tags
         if(tagTokenHelper_closeTagGeneric(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
 
         // [u] Check that a valid text token was detected in this nest
         if(context.thisNest.contents.length == 0) { // Will contain "valid_node" if text was detected
-            parseResult.debugMessages.push(newDebugMessage("warning", "Empty " + token + " section detected. Ensure that text-based sections contain at least one non-whitespace character. This section has been ignored.", context, 0)); //TBC DOCUMENTATION: SECTIONS
+            parseResult.debugMessages.push(newDebugMessage("warning", "Empty " + token + " section detected. Ensure that text-based sections contain at least one non-whitespace character. This section has been ignored.", context, 0, "nontag_sections"));
             context.currentNestLevels[context.currentNestLevels.length - 2].contents.pop(); // Deletes the respective element from contents of parent node, 'ignoring' the section.
         }
 
@@ -703,7 +740,7 @@ function tagToken_difficulty(context: LessonParseTokenContext, parseResult: Less
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Nest Level Requirement: metadata (or root if allowed by ALLOW_METADATA_IN_ROOT)
+        // Nest Level check: metadata (or root if allowed by ALLOW_METADATA_IN_ROOT)
         if(context.thisNest.nestLevel == "root" && context.config.ALLOW_METADATA_IN_ROOT) {
             parseResult.debugMessages.push(newDebugMessage("suggestion", "Consider placing " + token + " subsection within the Lesson's <metadata> section for better organisation.", context, 0));
         } 
@@ -712,7 +749,7 @@ function tagToken_difficulty(context: LessonParseTokenContext, parseResult: Less
             return;
         }
 
-        // Argument Requirement: 1
+        // Argument check: 1
         if(tagTokenHelper_fixedArgsGeneric(1, context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -743,7 +780,7 @@ function tagToken_estimatedTime(context: LessonParseTokenContext, parseResult: L
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Nest Level Requirement: metadata (or root if allowed by ALLOW_METADATA_IN_ROOT)
+        // Nest Level check: metadata (or root if allowed by ALLOW_METADATA_IN_ROOT)
         if(context.thisNest.nestLevel == "root" && context.config.ALLOW_METADATA_IN_ROOT) {
             parseResult.debugMessages.push(newDebugMessage("suggestion", "Consider placing " + token + " subsection within the Lesson's <metadata> section for better organisation.", context, 0));
         } 
@@ -754,7 +791,7 @@ function tagToken_estimatedTime(context: LessonParseTokenContext, parseResult: L
             return;
         }
 
-        // Argument Requirement: 1
+        // Argument check: 1
         if(tagTokenHelper_fixedArgsGeneric(1, context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -789,7 +826,7 @@ function tagToken_title(context: LessonParseTokenContext, parseResult: LessonPar
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Nest Level Requirement: metadata (or root if allowed by ALLOW_METADATA_IN_ROOT)
+        // Nest Level check: metadata (or root if allowed by ALLOW_METADATA_IN_ROOT)
         if(context.thisNest.nestLevel == "root" && context.config.ALLOW_METADATA_IN_ROOT) {
             parseResult.debugMessages.push(newDebugMessage("suggestion", "Consider placing " + token + " subsection within the Lesson's <metadata> section for better organisation.", context, 0));
         } 
@@ -801,7 +838,7 @@ function tagToken_title(context: LessonParseTokenContext, parseResult: LessonPar
             return;
         }
 
-        // Arguments Requirment: no args with special informative message
+        // Arguments check: no args with special informative message
         tagTokenHelper_noArgsGeneric(context, parseResult, "Unnecessary arguments found within tag: <" + context.tokenArgs.join(" ") + ">. The Lesson Title is specified as a text section, not within tag arguments. These arguments will be ignored.");
     
         // [u] Check for whether value has already been modified (can't use normal nest.contents method due to potentially multiple metadata sections + non-nested tokens)
@@ -815,14 +852,14 @@ function tagToken_title(context: LessonParseTokenContext, parseResult: LessonPar
         context.currentNestLevels.push({nestLevel: context.tokenArgs[0], contents: []}); // Only needs to add nest level, evaluateTextToken() handles the rest
     }
     else { // closer tag
-        // Basic nest level and args requirements for closing tags
+        // Basic nest level and args checks for closing tags
         if(tagTokenHelper_closeTagGeneric(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
 
         // [u] Check that a valid text token was detected in this nest
         if(context.thisNest.contents.length == 0) { // Will contain "valid_node" if text was detected
-            parseResult.debugMessages.push(newDebugMessage("warning", "Empty " + token + " section detected. Ensure that text-based sections contain at least one non-whitespace character. This section has been ignored.", context, 0)); //TBC DOCUMENTATION: SECTIONS
+            parseResult.debugMessages.push(newDebugMessage("warning", "Empty " + token + " section detected. Ensure that text-based sections contain at least one non-whitespace character. This section has been ignored.", context, 0, "nontag_sections"));
             context.currentNestLevels[context.currentNestLevels.length - 2].contents.pop(); // Deletes the respective element from contents of parent node, 'ignoring' the section.
         }
 
@@ -844,26 +881,26 @@ function tagToken_initialPythonFile(context: LessonParseTokenContext, parseResul
         // [u] Nest level is either metadata, defaults or step - likely forgotten closing tag
         if(["step", "defaults", "metadata"].includes(context.thisNest.nestLevel)) {
             if(context.config.CONTINUE_FROM_MISSING_CLOSER) {
-                parseResult.debugMessages.push(newDebugMessage("error", "Likely missing closing tag </" + context.thisNest.nestLevel.split("_")[0] + ">. All section-based tags must have a closer. The parser will attempt to continue beyond this.", context, -1)); //TBC DOCUMENTATION: SECTIONS
+                parseResult.debugMessages.push(newDebugMessage("error", "Likely missing closing tag </" + context.thisNest.nestLevel.split("_")[0] + ">. All section-based tags must have a closer. The parser will attempt to continue beyond this.", context, -1, "nontag_sections"));
                 
                 // Attempts to resolve the issue by removing the step nestLevel and continuing. Only continues to scan for more errors for convenience.
                 context.currentNestLevels.pop();
                 context.thisNest = context.currentNestLevels[context.currentNestLevels.length - 1];
             }
             else {
-                parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Likely missing closing tag </" + context.thisNest.nestLevel.split("_")[0] + ">. All section-based tags must have a closer.", context, -1)); //TBC DOCUMENTATION: SECTIONS
+                parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Likely missing closing tag </" + context.thisNest.nestLevel.split("_")[0] + ">. All section-based tags must have a closer.", context, -1, "nontag_sections"));
                 parseResult.success = false;
                 return;
             }
         }
 
-        // Nest Level Requirement: root (no nesting)
+        // Nest Level check: root (no nesting)
         if(context.thisNest.nestLevel != "root") {
             parseResult.debugMessages.push(newDebugMessage("warning", "The Initial File should not be specified manually. To add an Initial Python File to this Lesson, upload it in the editor. This tag will be ignored.", context, 0));
             return;
         }
 
-        // Argument Requirement: 1
+        // Argument check: 1
         if(tagTokenHelper_fixedArgsGeneric(1, context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -881,15 +918,15 @@ function tagToken_initialPythonFile(context: LessonParseTokenContext, parseResul
         context.thisNest.contents.push(context.tokenArgs[0]); // Add to the parent nest
         context.currentNestLevels.push({nestLevel: context.tokenArgs[0], contents: []}); // Add nest level
     }
-    else { // closer tag TBC LOADS OF POST STEP COMPLETION CHECKS
-        // Basic nest level and args requirements for closing tags
+    else { // closer tag
+        // Basic nest level and args checks for closing tags
         if(tagTokenHelper_closeTagGeneric(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
 
         // [u] Check that a valid text token was detected in this nest
         if(context.thisNest.contents.length == 0) { // Will contain "valid_node" if text was detected
-            parseResult.debugMessages.push(newDebugMessage("warning", "Empty Initial File Section detected. Check that the Python file was correctly uploaded. This section will be ignored, and the Lesson will assume no there is Initial File.", context, 0)); //TBC DOCUMENTATION: SECTIONS
+            parseResult.debugMessages.push(newDebugMessage("warning", "Empty Initial File Section detected. Check that the Python file was correctly uploaded. This section will be ignored, and the Lesson will assume no there is Initial File.", context, 0, "nontag_sections"));
             context.currentNestLevels[context.currentNestLevels.length - 2].contents.pop(); // Deletes the respective element from contents of parent node, 'ignoring' the section.
         }
 
@@ -907,7 +944,7 @@ function tagToken_defaults(context: LessonParseTokenContext, parseResult: Lesson
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Nest Level Requirement: root (no nesting)
+        // Nest Level check: root (no nesting)
         if(context.thisNest.nestLevel != "root") {
             parseResult.debugMessages.push(newDebugMessage("warning", "Invalid positioning for defaults tag: " + token + ", found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. Defaults sections cannot be nested in any other sections. This tag will be ignored.", context, 0));
             return;
@@ -926,7 +963,7 @@ function tagToken_defaults(context: LessonParseTokenContext, parseResult: Lesson
         context.currentNestLevels.push({nestLevel: context.tokenArgs[0], contents: []}); // Add nest level
     }
     else { // closer tag
-        // Basic nest level and args requirements for closing tags
+        // Basic nest level and args checks for closing tags
         if(tagTokenHelper_closeTagGeneric(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -954,20 +991,20 @@ function tagToken_step(stepAllSubsections: string[], context: LessonParseTokenCo
         // [u] Nest level is either metadata, defaults or step - likely forgotten closing tag
         if(["step", "defaults", "metadata"].includes(context.thisNest.nestLevel)) {
             if(context.config.CONTINUE_FROM_MISSING_CLOSER) {
-                parseResult.debugMessages.push(newDebugMessage("error", "Likely missing closing tag </" + context.thisNest.nestLevel.split("_")[0] + ">. All section-based tags must have a closer. The parser will attempt to continue beyond this.", context, -1)); //TBC DOCUMENTATION: SECTIONS
+                parseResult.debugMessages.push(newDebugMessage("error", "Likely missing closing tag </" + context.thisNest.nestLevel.split("_")[0] + ">. All section-based tags must have a closer. The parser will attempt to continue beyond this.", context, -1, "nontag_sections"));
                 
                 // Attempts to resolve the issue by removing the step nestLevel and continuing. Only continues to scan for more errors for convenience.
                 context.currentNestLevels.pop();
                 context.thisNest = context.currentNestLevels[context.currentNestLevels.length - 1];
             }
             else {
-                parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Likely missing closing tag </" + context.thisNest.nestLevel.split("_")[0] + ">. All section-based tags must have a closer.", context, -1)); //TBC DOCUMENTATION: SECTIONS
+                parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Likely missing closing tag </" + context.thisNest.nestLevel.split("_")[0] + ">. All section-based tags must have a closer.", context, -1, "nontag_sections"));
                 parseResult.success = false;
                 return;
             }
         }
 
-        // Nest Level Requirement: root (no nesting)
+        // Nest Level check: root (no nesting)
         if(context.thisNest.nestLevel != "root") {
             parseResult.debugMessages.push(newDebugMessage("warning", "Invalid positioning for Step tag: " + token + ", found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. Steps cannot be nested in any other sections. This tag will be ignored.", context, 0));
             return;
@@ -975,14 +1012,14 @@ function tagToken_step(stepAllSubsections: string[], context: LessonParseTokenCo
 
         // [u] Maximum amount of steps
         if(totalSteps == context.config.MAX_LESSON_STEPS) {
-            parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Maximum Steps reached. Lesson files are limited to " + context.config.MAX_LESSON_STEPS + " total Steps. Please consider shortening this lesson or combining smaller Steps together.", context, 0)); //TBC DOCUMENTATION: GENERAL LESSON RULES?
+            parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Maximum Steps reached. Lesson files are limited to " + context.config.MAX_LESSON_STEPS + " total Steps. Please consider shortening this lesson or combining smaller Steps together.", context, 0));
             parseResult.success = false;
             return;
         }
 
         let newStepRef = context.stepRef; //<step> is the only tag that changes stepRef
 
-        // Arguments Requirment: at least 1 for stepRef
+        // Arguments check: at least 1 for stepRef
         if(context.tokenArgs.length == 1) {
             newStepRef = "Unnamed Step #" + (totalSteps + 1); // e.g. 'Unnamed Step #4'
             context.stepRef = newStepRef; // Update for a more accurate error message
@@ -1018,8 +1055,8 @@ function tagToken_step(stepAllSubsections: string[], context: LessonParseTokenCo
         context.thisNest.contents.push(context.tokenArgs[0]); // Add to the parent nest
         context.currentNestLevels.push({nestLevel: context.tokenArgs[0], contents: []}); // Add nest level
     }
-    else { // closer tag TBC LOADS OF POST STEP COMPLETION CHECKS
-        // Basic nest level and args requirements for closing tags
+    else { // closer tag 
+        // Basic nest level and args checks for closing tags
         if(tagTokenHelper_closeTagGeneric(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1086,12 +1123,15 @@ function tagTokenHelper_stepCloserChecks(context: LessonParseTokenContext, parse
         currentStep.attributes.minRequirements = currentStep.requirements.length;
     }
 
+    // <panel-tall> + <text>: suggestion for using panel-tall if there is a lot of text
+    if(currentStep.textContent.length > 275 && !currentStep.attributes.panelTall) { // Roughly the amount of chars before a scrollbar appears
+        parseResult.debugMessages.push(newDebugMessage("suggestion", "Step Text '" + currentStep.textContent.slice(0, 32) + "...' is considerably long for a single Step and will likely have a scroll bar. Consider using <panel-tall> to show more text.", context, 0, "panel-tall"));
+    }
+
     // <panel-type> + <requirements>: central-focus panel cannot have requirements due to it blocking interaction with the editor
     if(currentStep.attributes.panelType == StepPanelType.FULLSCREEN_FOCUS_MODAL && currentStep.requirements.length > 0) {
         parseResult.debugMessages.push(newDebugMessage("error", "<panel-type> argument 'central-focus' cannot be used for Steps with Requirements, as access to the editor is obstructed by this panel. If the Requirements are necessary, modify the Step's Panel Type.", context, 0, "panel-type"));
     }
-
-    // - TBC: Panel Type Size incompatability with too much text for certain panel types
 }
 
 /////////////////////////////////////////////
@@ -1110,7 +1150,7 @@ function tagToken_attributes(stepAllSubsections: string[], context: LessonParseT
             return;
         }
 
-        // Step subsection defaults requirements
+        // Step subsection defaults checks
         if(tagTokenHelper_stepSubsections(stepAllSubsections, context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1119,7 +1159,7 @@ function tagToken_attributes(stepAllSubsections: string[], context: LessonParseT
         context.currentNestLevels.push({nestLevel: context.tokenArgs[0], contents: []});
     }
     else { // closer tag
-        // Basic nest level and args requirements for closing tags
+        // Basic nest level and args checks for closing tags
         if(tagTokenHelper_closeTagGeneric(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1139,7 +1179,7 @@ function tagToken_hintList(stepAllSubsections: string[], context: LessonParseTok
     //const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Step subsection defaults requirements
+        // Step subsection defaults checks
         if(tagTokenHelper_stepSubsections(stepAllSubsections, context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1148,7 +1188,7 @@ function tagToken_hintList(stepAllSubsections: string[], context: LessonParseTok
         context.currentNestLevels.push({nestLevel: context.tokenArgs[0], contents: []});
     }
     else { // closer tag
-        // Basic nest level and args requirements for closing tags
+        // Basic nest level and args checks for closing tags
         if(tagTokenHelper_closeTagGeneric(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1166,7 +1206,7 @@ function tagToken_requirements(stepAllSubsections: string[], context: LessonPars
     if(context.tokenArgs[0][0] != "/") { // opener tag
         tagTokenHelper_similarTagSuggestion(["attributes", "defaults"], "min-requirements", context, parseResult);
 
-        // Step subsection defaults requirements
+        // Step subsection defaults checks
         if(tagTokenHelper_stepSubsections(stepAllSubsections, context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1175,7 +1215,7 @@ function tagToken_requirements(stepAllSubsections: string[], context: LessonPars
         context.currentNestLevels.push({nestLevel: context.tokenArgs[0], contents: []});
     }
     else { // closer tag
-        // Basic nest level and args requirements for closing tags
+        // Basic nest level and args checks for closing tags
         if(tagTokenHelper_closeTagGeneric(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1192,7 +1232,7 @@ function tagToken_text(stepAllSubsections: string[], context: LessonParseTokenCo
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Step subsection defaults requirements
+        // Step subsection defaults checks
         if(tagTokenHelper_stepSubsections(stepAllSubsections, context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1201,14 +1241,14 @@ function tagToken_text(stepAllSubsections: string[], context: LessonParseTokenCo
         context.currentNestLevels.push({nestLevel: context.tokenArgs[0], contents: []}); // Only needs to add nest level, evaluateTextToken() handles the rest
     }
     else { // closer tag
-        // Basic nest level and args requirements for closing tags
+        // Basic nest level and args checks for closing tags
         if(tagTokenHelper_closeTagGeneric(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
 
         // [u] Check that a valid text token was detected in this nest
         if(context.thisNest.contents.length == 0) { // Will contain "valid_node" if text was detected
-            parseResult.debugMessages.push(newDebugMessage("warning", "Empty " + token + " section detected. Ensure that text-based sections contain at least one non-whitespace character. This section has been ignored.", context, 0)); //TBC DOCUMENTATION: SECTIONS
+            parseResult.debugMessages.push(newDebugMessage("warning", "Empty " + token + " section detected. Ensure that text-based sections contain at least one non-whitespace character. This section has been ignored.", context, 0, "nontag_sections"));
             context.currentNestLevels[context.currentNestLevels.length - 2].contents.pop(); // Deletes the respective element from contents of parent node, 'ignoring' the section.
         }
 
@@ -1216,7 +1256,7 @@ function tagToken_text(stepAllSubsections: string[], context: LessonParseTokenCo
     }
 }
 
-// Covers the base requirements subsections for steps/defaultss, making use of a list of all possible subsections.
+// Covers the base checks subsections for steps/defaultss, making use of a list of all possible subsections.
 // - Checks for potentially missing closing tags from other step subsections
 // - Nest level is step or defaults
 // - No arguments
@@ -1232,7 +1272,7 @@ function tagTokenHelper_stepSubsections(stepSubsections: string[], context: Less
         return true;
     }
     
-    // Nest Level Requirement: step or defaults
+    // Nest Level check: step or defaults
     if(context.thisNest.nestLevel != "step") {
         // Unique message for text due to it also being valid within <hint>
         if(context.tokenArgs[0] == "text") {
@@ -1247,13 +1287,13 @@ function tagTokenHelper_stepSubsections(stepSubsections: string[], context: Less
     // Arguments Requirment: no args
     tagTokenHelper_noArgsGeneric(context, parseResult);
     
-    // Uniqueness Requirement: one per parent section
+    // Uniqueness check: one per parent section
     if(context.thisNest.contents.includes(context.tokenArgs[0])) {
         if(context.config.ALLOW_MULTIPLE_STEP_SUBSECTIONS) {
-            parseResult.debugMessages.push(newDebugMessage("suggestion", "Multiple <" + context.tokenArgs[0] + "> subsections in one Step. It is advised to only have at most one of each subsection per Step. Consider merging these two sections into one.", context, 0)); //TBC DOCUMENTATION: SECTIONS
+            parseResult.debugMessages.push(newDebugMessage("suggestion", "Multiple <" + context.tokenArgs[0] + "> subsections in one Step. It is advised to only have at most one of each subsection per Step. Consider merging these two sections into one.", context, 0, "nontag_sections"));
         }
         else {
-            parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Multiple <" + context.tokenArgs[0] + "> sections within one Step. Please merge duplicate subsections into one per step.", context, 0)); //TBC DOCUMENTATION: SECTIONS
+            parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Multiple <" + context.tokenArgs[0] + "> sections within one Step. Please merge duplicate subsections into one per step.", context, 0, "nontag_sections"));
             parseResult.success = false;
             return true;
         }
@@ -1273,12 +1313,12 @@ function tagToken_colourScheme(context: LessonParseTokenContext, parseResult: Le
     const currentStep = tagTokenHelper_attributeGetCurrentStep(context, parseResult);
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Basic nest level and uniqueness requirements for fixed argument attributes
+        // Basic nest level and uniqueness checks for fixed argument attributes
         if(tagTokenHelper_stepAttributeNestUnique(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
 
-        // Argument Requirement: 1
+        // Argument check: 1
         if(tagTokenHelper_fixedArgsGeneric(1, context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1304,15 +1344,15 @@ function tagToken_hideExpectedValues(context: LessonParseTokenContext, parseResu
     const currentStep = tagTokenHelper_attributeGetCurrentStep(context, parseResult);
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Basic nest level and uniqueness requirements for fixed argument attributes
+        // Basic nest level and uniqueness checks for fixed argument attributes
         if(tagTokenHelper_stepAttributeNestUnique(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
 
-        // Argument Requirements: nothing, or either true or false
+        // Argument check: nothing, or either true or false
         tagTokenHelper_stepAttributeBooleanArguments(context, parseResult);
         
-        if(context.tokenArgs.length == 0 || context.tokenArgs[1].toLowerCase() == "true") {
+        if(context.tokenArgs.length == 1 || context.tokenArgs[1].toLowerCase() == "true") {
             // No args = true
             currentStep.attributes.hideRequirementExpectedValues = true;
         }
@@ -1337,12 +1377,12 @@ function tagToken_minRequirements(context: LessonParseTokenContext, parseResult:
     const currentStep = tagTokenHelper_attributeGetCurrentStep(context, parseResult);
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Basic nest level and uniqueness requirements for fixed argument attributes
+        // Basic nest level and uniqueness checks for fixed argument attributes
         if(tagTokenHelper_stepAttributeNestUnique(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
 
-        // Argument Requirement: 1
+        // Argument check: 1
         if(tagTokenHelper_fixedArgsGeneric(1, context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1366,18 +1406,51 @@ function tagToken_minRequirements(context: LessonParseTokenContext, parseResult:
     }
 }
 
+// Boolean Attribute defining whether the Requirement Message popover should hide the expected value.
+function tagToken_panelTall(context: LessonParseTokenContext, parseResult: LessonParseResult) {
+    const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
+    const currentStep = tagTokenHelper_attributeGetCurrentStep(context, parseResult);
+
+    if(context.tokenArgs[0][0] != "/") { // opener tag
+        // Basic nest level and uniqueness checks for fixed argument attributes
+        if(tagTokenHelper_stepAttributeNestUnique(context, parseResult)) {
+            return; // ^ If true, tag needs to be ignored
+        }
+
+        // Argument check: nothing, or either true or false
+        tagTokenHelper_stepAttributeBooleanArguments(context, parseResult);
+
+        if(context.tokenArgs.length == 1 || context.tokenArgs[1].toLowerCase() == "true") {
+            // No args = true
+            currentStep.attributes.panelTall = true;
+        }
+        else if(context.tokenArgs[1].toLowerCase() == "false") {
+            if(!currentStep.attributes.panelTall) {
+                parseResult.debugMessages.push(newDebugMessage("suggestion", "Unnecessary boolean attribute tag: " + token + ". This tag is paired to a value that was already false. Boolean argument attributes are false by defaults.", context, 0));
+            }
+            currentStep.attributes.panelTall = false;
+        }
+
+        context.thisNest.contents.push(context.tokenArgs[0]); // Add to the parent nest
+    }
+    else { // closer tag
+        // This tag type has no need for a closer tag, and therefore is disregarded
+        tagTokenHelper_noCloserTagNeeded(context, parseResult);
+    }
+}
+
 // Attribute to determine the panel type of a step (where the panel is displayed in the editor)
 function tagToken_panelType(context: LessonParseTokenContext, parseResult: LessonParseResult) {
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
     const currentStep = tagTokenHelper_attributeGetCurrentStep(context, parseResult);
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Basic nest level and uniqueness requirements for fixed argument attributes
+        // Basic nest level and uniqueness checks for fixed argument attributes
         if(tagTokenHelper_stepAttributeNestUnique(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
 
-        // Argument Requirement: 1
+        // Argument check: 1
         if(tagTokenHelper_fixedArgsGeneric(1, context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1414,12 +1487,12 @@ function tagTokenHelper_attributeGetCurrentStep(context: LessonParseTokenContext
         : parseResult.steps[parseResult.steps.length - 1]; // this tag is inside the most recent <step> (unless the placement is invalid, hence the parseResult.steps.length == 0 failsafe))
 }
 
-// Covers the base requirements for unique step attributes that take an argument:
+// Covers the base checks for unique step attributes that take an argument:
 // - Inside <attributes> (unless setting allows otherwise).
 // - Only one of this attribute specification within the current step.
 // Returns 'true' when evaluateTagToken() needs to return early (ignore the tag).
 function tagTokenHelper_stepAttributeNestUnique(context: LessonParseTokenContext, parseResult: LessonParseResult) : boolean {
-    // Nest Level Requirement: defaults, attributes, or just step if ALLOW_ATTRIBUTES_IN_STEP_NEST == true.
+    // Nest Level check: defaults, attributes, or just step if ALLOW_ATTRIBUTES_IN_STEP_NEST == true.
     if(context.thisNest.nestLevel != "attributes" && context.thisNest.nestLevel != "defaults") {
         if(context.config.ALLOW_ATTRIBUTES_IN_STEP_NEST && context.thisNest.nestLevel == "step") {
             parseResult.debugMessages.push(newDebugMessage("suggestion", "Unnested Attribute tag: <" + context.tokenArgs.join(" ") + ">. For better code organisation, consider grouping all Attribute tags within the <attributes> section.", context, 0));
@@ -1430,7 +1503,7 @@ function tagTokenHelper_stepAttributeNestUnique(context: LessonParseTokenContext
         }
     }
 
-    // Uniqueness Requirement: one per parent section. Also checks the step in case attributes were validly placed outside of the <attributes> section.
+    // Uniqueness check: one per parent section. Also checks the step in case attributes were validly placed outside of the <attributes> section.
     if(context.thisNest.contents.includes(context.tokenArgs[0]) || context.currentNestLevels[1].contents.includes(context.tokenArgs[0])) {
         parseResult.debugMessages.push(newDebugMessage("warning", "Multiple instances of Attribute tag within one section: <" + context.tokenArgs[0] + ">. Only the first valid instance of an Attribute tag will be used. This tag will be ignored.", context, 0, "attributes"));
         return true;
@@ -1439,7 +1512,7 @@ function tagTokenHelper_stepAttributeNestUnique(context: LessonParseTokenContext
     return false;
 }
 
-// Covers the argument requirements for attributes with boolean data, allowing 0-1 arguments
+// Covers the argument checks for attributes with boolean data, allowing 0-1 arguments
 function tagTokenHelper_stepAttributeBooleanArguments(context: LessonParseTokenContext, parseResult: LessonParseResult) {
     // Arguments Requirment: 0 or 1, but can only be true or false. 0 args defaults to true.
     if(context.tokenArgs.length > 2) {
@@ -1466,20 +1539,20 @@ function tagToken_hint(context: LessonParseTokenContext, parseResult: LessonPars
         // [u] Nest level is hint already - likely forgotten closing tag from previous hint
         if(context.thisNest.nestLevel == "hint") {
             if(context.config.CONTINUE_FROM_MISSING_CLOSER) {
-                parseResult.debugMessages.push(newDebugMessage("error", "Likely missing Hint closing tag </hint>. All section-based tags, including Hints, must have a closer. The parser will attempt to continue beyond this.", context, -1)); //TBC DOCUMENTATION: SECTIONS
+                parseResult.debugMessages.push(newDebugMessage("error", "Likely missing Hint closing tag </hint>. All section-based tags, including Hints, must have a closer. The parser will attempt to continue beyond this.", context, -1, "nontag_sections"));
                 
                 // Attempts to resolve the issue by removing the step nestLevel and continuing. Only continues to scan for more errors for convenience.
                 context.currentNestLevels.pop();
                 context.thisNest = context.currentNestLevels[context.currentNestLevels.length - 1];
             }
             else {
-                parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Likely missing Hint closing tag </hint>. All section-based tags, including Hints, must have a closer.", context, -1)); //TBC DOCUMENTATION: SECTIONS
+                parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Likely missing Hint closing tag </hint>. All section-based tags, including Hints, must have a closer.", context, -1, "nontag_sections"));
                 parseResult.success = false;
                 return;
             }
         }
 
-        // Nest Level Requirement: hint-list, or step if allowed
+        // Nest Level check: hint-list, or step if allowed
         if(context.thisNest.nestLevel != "hint-list") {
             if(context.thisNest.nestLevel == "step" && context.config.ALLOW_HINTS_IN_STEP_NEST) {
                 // Hint is valid in this case, but when there's more than one hint in a step, a suggestion to group them is given.
@@ -1511,8 +1584,8 @@ function tagToken_hint(context: LessonParseTokenContext, parseResult: LessonPars
         context.thisNest.contents.push(context.tokenArgs[0]); // Add to the parent nest
         context.currentNestLevels.push({nestLevel: context.tokenArgs[0], contents: []}); // Add nest level
     }
-    else { // closer tag TBC LOADS OF POST STEP COMPLETION CHECKS
-        // Basic nest level and args requirements for closing tags
+    else { // closer tag
+        // Basic nest level and args checks for closing tags
         if(tagTokenHelper_closeTagGeneric(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1537,19 +1610,19 @@ function tagToken_requirements_inHint(context: LessonParseTokenContext, parseRes
     //const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Nest Level Requirement: hint
+        // Nest Level check: hint
         // Based on the logic of the parser, this method will only be called when the nest level is correct. Otherwise, it will call the primary variant
 
         // Arguments Requirment: no args
         tagTokenHelper_noArgsGeneric(context, parseResult);
         
-        // Uniqueness Requirement: one per parent section
+        // Uniqueness check: one per parent section
         if(context.thisNest.contents.includes(context.tokenArgs[0])) {
             if(context.config.ALLOW_MULTIPLE_STEP_SUBSECTIONS) { // This is too niche of a situation to have as its own config flag, so it just uses context.config.ALLOW_MULTIPLE_STEP_SUBSECTIONS instead
-                parseResult.debugMessages.push(newDebugMessage("suggestion", "Multiple <requirements> subsections in one Hint. It is advised to only have at most one of each subsection per Hint. Consider merging these two sections into one.", context, 0)); //TBC DOCUMENTATION: SECTIONS
+                parseResult.debugMessages.push(newDebugMessage("suggestion", "Multiple <requirements> subsections in one Hint. It is advised to only have at most one of each subsection per Hint. Consider merging these two sections into one.", context, 0, "nontag_sections"));
             }
             else {
-                parseResult.debugMessages.push(newDebugMessage("error", "Multiple <requirements> sections within one Hint. Please merge duplicate subsections into one per Hint.", context, 0)); //TBC DOCUMENTATION: SECTIONS
+                parseResult.debugMessages.push(newDebugMessage("error", "Multiple <requirements> sections within one Hint. Please merge duplicate subsections into one per Hint.", context, 0, "nontag_sections"));
             }
         }
 
@@ -1557,7 +1630,7 @@ function tagToken_requirements_inHint(context: LessonParseTokenContext, parseRes
         context.currentNestLevels.push({nestLevel: context.tokenArgs[0] + "_inHint", contents: []}); // VARIANT NEST
     }
     else { // closer tag
-        // Basic nest level and args requirements for closing tags
+        // Basic nest level and args checks for closing tags
         if(tagTokenHelper_closeTagGeneric(context, parseResult, "_inHint")) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1579,13 +1652,13 @@ function tagToken_text_inHint(context: LessonParseTokenContext, parseResult: Les
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Nest Level Requirement: hint
+        // Nest Level check: hint
         // Based on the logic of the parser, this method will only be called when the nest level is correct. Otherwise, it will call the primary variant
 
         // Arguments Requirment: no args
         tagTokenHelper_noArgsGeneric(context, parseResult);
         
-        // Uniqueness Requirement: one per parent section
+        // Uniqueness check: one per parent section
         if(context.thisNest.contents.includes(context.tokenArgs[0])) {
             parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Multiple <text> sections within one Hint. Only one Text section is allowed per Hint. To display multiple text segments, make use of multiple <hint> sections with varying Requirements.", context, 0, "hint"));
             parseResult.success = false;
@@ -1597,14 +1670,14 @@ function tagToken_text_inHint(context: LessonParseTokenContext, parseResult: Les
     }
     else { // closer tag
 
-        // Basic nest level and args requirements for closing tags
+        // Basic nest level and args checks for closing tags
         if(tagTokenHelper_closeTagGeneric(context, parseResult, "_inHint")) {
             return; // ^ If true, tag needs to be ignored
         }
 
         // [u] Check that a valid text token was detected in this nest
         if(context.thisNest.contents.length == 0) { // Will contain "valid_node" if text was detected
-            parseResult.debugMessages.push(newDebugMessage("warning", "Empty " + token + " section detected. Ensure that text-based sections contain at least one non-whitespace character. This section has been ignored.", context, 0)); //TBC DOCUMENTATION: SECTIONS
+            parseResult.debugMessages.push(newDebugMessage("warning", "Empty " + token + " section detected. Ensure that text-based sections contain at least one non-whitespace character. This section has been ignored.", context, 0, "nontag_sections"));
             context.currentNestLevels[context.currentNestLevels.length - 2].contents.pop(); // Deletes the respective element from contents of parent node, 'ignoring' the section.
         }
 
@@ -1622,7 +1695,7 @@ function tagToken_changesMade(context: LessonParseTokenContext, parseResult: Les
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Nest Level Requirement: requirements, hint, or step if allowed
+        // Nest Level check: requirements, hint, or step if allowed
         if(tagTokenHelper_requirementNestLevel(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1630,13 +1703,13 @@ function tagToken_changesMade(context: LessonParseTokenContext, parseResult: Les
         // Arguments Requirment: no args
         tagTokenHelper_noArgsGeneric(context, parseResult);
 
-        // Negation Requirement: cannot be negated for Step Requirements
+        // Negation check: cannot be negated for Step Requirements
         if(context.tokenArgs[0][0] == "!" && (context.thisNest.nestLevel == "step" || context.thisNest.nestLevel == "requirements")) {
             parseResult.debugMessages.push(newDebugMessage("warning", "Invalid Step Requirement: " + token + ". To protect the student from getting stuck behind irreversable conditions, this Requirement cannot be negated for a Step Requirement. This tag will be ignored.", context, 0));
             return;
         }
 
-        // Uniqueness Requirement: one per parent section, including negations
+        // Uniqueness check: one per parent section, including negations
         if(tagTokenHelper_requirementUniqueness(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1657,12 +1730,70 @@ function tagToken_changesMade(context: LessonParseTokenContext, parseResult: Les
     }
 }
 
+// Console Output Requirement, needing the user to have a string present in their console output
+function tagToken_consoleOutput(context: LessonParseTokenContext, parseResult: LessonParseResult) {
+    const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
+    const currentStep = parseResult.steps[parseResult.steps.length - 1];
+
+    if(context.tokenArgs[0][0] != "/") { // opener tag
+        // Nest Level check: requirements, hint, or step if allowed
+        if(tagTokenHelper_requirementNestLevel(context, parseResult)) {
+            return; // ^ If true, tag needs to be ignored
+        }
+
+        // Arguments Requirment: no args
+        tagTokenHelper_noArgsGeneric(context, parseResult, "Unnecessary arguments found within tag: " + token + ". The string content to find in the Console is specified as a text section, not within tag arguments. These arguments will be ignored.");
+
+        // No Negation or Uniqueness requirements
+
+        // Create the Requirement
+        tagTokenHelper_addNewRequirement(context, parseResult, {
+            reqType: StepRequirementType.CONSOLE_OUTPUT, 
+            negated: context.tokenArgs[0][0] == "!",
+            needed: false,
+            // Text content is specified in the textToken tag
+        });
+
+        // Note that besides the _inHint variant, this nest level also has a normal and a negated version. All of these are considered in evaluateTextToken()
+        if(context.thisNest.nestLevel == "hint" || context.thisNest.nestLevel == "requirements_inHint") {
+            context.currentNestLevels.push({nestLevel: context.tokenArgs[0] + "_inHint", contents: []}); // VARIANT NEST
+        }
+        else {
+            context.currentNestLevels.push({nestLevel: context.tokenArgs[0], contents: []});
+        }
+        context.thisNest.contents.push(context.tokenArgs[0]); // Add to the parent nest step/defaults
+    }
+    else { // closer tag
+        // Basic nest level and args requirements for closing tags + detection of inHint variant
+        if(context.thisNest.nestLevel != "console-output_inHint"){
+            if(tagTokenHelper_closeTagGeneric(context, parseResult)) {
+                return; // ^ If true, tag needs to be ignored
+            }
+        }
+
+        // [u] Check that a valid text token was detected in this nest
+        if(context.thisNest.contents.length == 0) { // Will contain "valid_node" if text was detected
+            parseResult.debugMessages.push(newDebugMessage("warning", "Empty " + token + " section detected. Ensure that text-based sections contain at least one non-whitespace character. This section has been ignored.", context, 0, "nontag_sections"));
+            context.currentNestLevels[context.currentNestLevels.length - 2].contents.pop(); // Deletes the respective element from contents of parent node, 'ignoring' the section.
+            // Also deletes the actual requirement, which is either the most recent requirment in the most recent hint, or just the most recent step requirement
+            if(context.thisNest.nestLevel == "console-output_inHint" || context.thisNest.nestLevel == "!console-output_inHint") {
+                currentStep.hints[currentStep.hints.length - 1].requirements.pop();
+            }
+            else {
+                currentStep.requirements.pop();
+            }
+        }
+
+        context.currentNestLevels.pop(); // Remove nestLevel
+    }
+}
+
 // Failed Attempts Requirement for hints. Makes a hint display after a certain amount of failed attempts to go to the next step (from other unfulfilled requirements)
 function tagToken_failedAttempts(context: LessonParseTokenContext, parseResult: LessonParseResult) {
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Nest Level Requirement: ONLY hint. This requirement type is not allowed to be used on steps.
+        // Nest Level check: ONLY hint. This requirement type is not allowed to be used on steps.
         if(context.thisNest.nestLevel != "hint" && context.thisNest.nestLevel != "requirements_inHint") {
             if(context.thisNest.nestLevel == "requirements" || (context.thisNest.nestLevel == "step" && context.config.ALLOW_REQUIREMENTS_IN_STEP_NEST)) {
                 parseResult.debugMessages.push(newDebugMessage("warning", "Invalid positioning for Requirement tag: <" + context.tokenArgs[0] + ">, found in '" + context.thisNest.nestLevel.split("_")[0] + "' section. This Requirement type is not allowed to be used for Steps. It can only be placed inside a <hint> section for conditionally displaying Hints. This tag will be ignored.", context, 0));
@@ -1693,7 +1824,7 @@ function tagToken_failedAttempts(context: LessonParseTokenContext, parseResult: 
             }
         }
 
-        // Uniqueness Requirement: one per parent section, including negations
+        // Uniqueness check: one per parent section, including negations
         if(tagTokenHelper_requirementUniqueness(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1719,7 +1850,7 @@ function tagToken_failedAttempts(context: LessonParseTokenContext, parseResult: 
 function tagToken_noErrors(context: LessonParseTokenContext, parseResult: LessonParseResult) {
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Nest Level Requirement: requirements, hint, or step if allowed
+        // Nest Level check: requirements, hint, or step if allowed
         if(tagTokenHelper_requirementNestLevel(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1727,7 +1858,7 @@ function tagToken_noErrors(context: LessonParseTokenContext, parseResult: Lesson
         // Arguments Requirment: no args
         tagTokenHelper_noArgsGeneric(context, parseResult);
 
-        // Uniqueness Requirement: one per parent section, including negations
+        // Uniqueness check: one per parent section, including negations
         if(tagTokenHelper_requirementUniqueness(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1748,13 +1879,13 @@ function tagToken_noErrors(context: LessonParseTokenContext, parseResult: Lesson
     }
 }
 
-// No Errors Requirement, needing the user to have no errors in their code
+// Has Python Requirement, needing the user to have a python string present in their code
 function tagToken_hasPython(context: LessonParseTokenContext, parseResult: LessonParseResult) {
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
     const currentStep = parseResult.steps[parseResult.steps.length - 1];
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Nest Level Requirement: requirements, hint, or step if allowed
+        // Nest Level check: requirements, hint, or step if allowed
         if(tagTokenHelper_requirementNestLevel(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1791,7 +1922,7 @@ function tagToken_hasPython(context: LessonParseTokenContext, parseResult: Lesso
 
         // [u] Check that a valid text token was detected in this nest
         if(context.thisNest.contents.length == 0) { // Will contain "valid_node" if text was detected
-            parseResult.debugMessages.push(newDebugMessage("warning", "Empty " + token + " section detected. Ensure that text-based sections contain at least one non-whitespace character. This section has been ignored.", context, 0)); //TBC DOCUMENTATION: SECTIONS
+            parseResult.debugMessages.push(newDebugMessage("warning", "Empty " + token + " section detected. Ensure that text-based sections contain at least one non-whitespace character. This section has been ignored.", context, 0, "nontag_sections"));
             context.currentNestLevels[context.currentNestLevels.length - 2].contents.pop(); // Deletes the respective element from contents of parent node, 'ignoring' the section.
             // Also deletes the actual requirement, which is either the most recent requirment in the most recent hint, or just the most recent step requirement
             if(context.thisNest.nestLevel == "has-python_inHint" || context.thisNest.nestLevel == "!has-python_inHint") {
@@ -1811,7 +1942,7 @@ function tagToken_runCode(context: LessonParseTokenContext, parseResult: LessonP
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Nest Level Requirement: requirements, hint, or step if allowed
+        // Nest Level check: requirements, hint, or step if allowed
         if(tagTokenHelper_requirementNestLevel(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1819,13 +1950,13 @@ function tagToken_runCode(context: LessonParseTokenContext, parseResult: LessonP
         // Arguments Requirment: no args
         tagTokenHelper_noArgsGeneric(context, parseResult);
 
-        // Negation Requirement: cannot be negated for Step Requirements
+        // Negation check: cannot be negated for Step Requirements
         if(context.tokenArgs[0][0] == "!" && (context.thisNest.nestLevel == "step" || context.thisNest.nestLevel == "requirements")) {
             parseResult.debugMessages.push(newDebugMessage("warning", "Invalid Step Requirement: " + token + ". To protect the student from getting stuck behind irreversable conditions, this Requirement cannot be negated for a Step Requirement. This tag will be ignored.", context, 0));
             return;
         }
 
-        // Uniqueness Requirement: one per parent section, including negations
+        // Uniqueness check: one per parent section, including negations
         if(tagTokenHelper_requirementUniqueness(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1851,7 +1982,7 @@ function tagToken_timePassed(context: LessonParseTokenContext, parseResult: Less
     const token = "<" + context.tokenArgs.join(" ") + ">"; //rebuild token
 
     if(context.tokenArgs[0][0] != "/") { // opener tag
-        // Nest Level Requirement: requirements, hint, or step if allowed
+        // Nest Level check: requirements, hint, or step if allowed
         tagTokenHelper_similarTagSuggestion(["metadata"], "estimated-time", context, parseResult);
         if(tagTokenHelper_requirementNestLevel(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
@@ -1877,13 +2008,13 @@ function tagToken_timePassed(context: LessonParseTokenContext, parseResult: Less
             }
         }
 
-        // Negation Requirement: cannot be negated for Step Requirements
+        // Negation check: cannot be negated for Step Requirements
         if(context.tokenArgs[0][0] == "!" && (context.thisNest.nestLevel == "step" || context.thisNest.nestLevel == "requirements")) {
             parseResult.debugMessages.push(newDebugMessage("warning", "Invalid Step Requirement: " + token + ". To protect the student from getting stuck behind irreversable conditions, this Requirement cannot be negated for a Step Requirement. This tag will be ignored.", context, 0));
             return;
         }
 
-        // Uniqueness Requirement: one per parent section, including negations
+        // Uniqueness check: one per parent section, including negations
         if(tagTokenHelper_requirementUniqueness(context, parseResult)) {
             return; // ^ If true, tag needs to be ignored
         }
@@ -1905,7 +2036,7 @@ function tagToken_timePassed(context: LessonParseTokenContext, parseResult: Less
     }
 }
 
-// Covers the nest requirement for Requirement tags.
+// Covers the nest check for Requirement tags.
 // - Inside either the <requirements> section of a step, or inside a <hint>
 // - If neither, check if its inside a step, as this might be allowed too and assumed as a step requirement
 function tagTokenHelper_requirementNestLevel(context: LessonParseTokenContext, parseResult: LessonParseResult) : boolean {
@@ -1922,7 +2053,7 @@ function tagTokenHelper_requirementNestLevel(context: LessonParseTokenContext, p
     return false;
 }
 
-// Covers the Uniqueness requirement for those that need it, including checking for negations when trying to add regular Requirements and vice versa
+// Covers the Uniqueness check for those that need it, including checking for negations when trying to add regular Requirements and vice versa
 function tagTokenHelper_requirementUniqueness(context: LessonParseTokenContext, parseResult: LessonParseResult) : boolean {
     if(context.thisNest.contents.includes(context.tokenArgs[0])) {
         parseResult.debugMessages.push(newDebugMessage("warning", "Multiple <" + context.tokenArgs[0] + "> Requirements in one section. Having multiple of this tag has no effect on the Requirement. This tag will be ignored.", context, 0));
@@ -1989,11 +2120,11 @@ export function evaluateEndOfFile(token: string, nestLevels: LessonParseNestSect
             parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Unsectioned text segment: '" + (token.length > 32 ? (token.slice(0, 32) + "...") : token) + "' To add comments safely, please use the comment tags <#> </#>.", context, currentLineNum + 1, "#"));
         }
         else {
-            parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Text segment read until end of file: '" + (token.length > 32 ? (token.slice(0, 32) + "...") : token) + "' This is likely caused by a missing closer tag </" + context.thisNest.nestLevel.split("_")[0] + ">.", context, currentLineNum + 1)); //TBC DOCUMENTATION SECTIONS
+            parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Text segment read until end of file: '" + (token.length > 32 ? (token.slice(0, 32) + "...") : token) + "' This is likely caused by a missing closer tag </" + context.thisNest.nestLevel.split("_")[0] + ">.", context, currentLineNum + 1, "nontag_sections"));
             
             // Special case where the user is using a Negated Requirement with a text section, such as <!has-python>, and did not negate the closer: </has-python> instead of </!has-python>
             if(context.thisNest.nestLevel[0] == "!" && token.includes("/" + context.thisNest.nestLevel.slice(1))) {
-                parseResult.debugMessages.push(newDebugMessage("warning", "Fatal Error triggered by overflowing text segment from a negated Requirement nest level. This is likely caused by not negating the Closer Tag. Ensure that negated Requirements also have a negated Closer Tag: </" + context.thisNest.nestLevel + ">.", context, 0)); // TBC DOCUMENTATION NEGATED REQUIREMENTS
+                parseResult.debugMessages.push(newDebugMessage("warning", "Fatal Error triggered by overflowing text segment from a negated Requirement nest level. This is likely caused by not negating the Closer Tag. Ensure that negated Requirements also have a negated Closer Tag: </" + context.thisNest.nestLevel + ">.", context, 0, "nontag_negation"));
             }
         }
         parseResult.success = false;
@@ -2002,14 +2133,14 @@ export function evaluateEndOfFile(token: string, nestLevels: LessonParseNestSect
 
     // If the end nest level is not root, there is a missing closer (most likely step). No point in using config.CONTINUE_FROM_MISSING_CLOSER as it is already the end of the file
     if(context.currentNestLevels.length > 1) {
-        parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Lesson File did not end in 'root' section, got '" + context.thisNest.nestLevel.split("_")[0] + "' instead. This is likely caused by a missing closer tag </" + context.thisNest.nestLevel.split("_")[0] + ">.", context, 0)); //TBC DOCUMENTATION SECTIONS
+        parseResult.debugMessages.push(newDebugMessage("fatal", "FATAL - Lesson File did not end in 'root' section, got '" + context.thisNest.nestLevel.split("_")[0] + "' instead. This is likely caused by a missing closer tag </" + context.thisNest.nestLevel.split("_")[0] + ">.", context, 0, "nontag_sections"));
         parseResult.success = false;
         return;
     }
 
     // Too few steps
     if(parseResult.steps.length < context.config.MIN_LESSON_STEPS) {
-        parseResult.debugMessages.push(newDebugMessage("error", "Lesson File has too few valid Steps. The minimum amount of Steps expected for a valid Lesson is " + context.config.MIN_LESSON_STEPS + ".", context, 0)); //TBC DOCUMENTATION GENERAL LESSON RULES
+        parseResult.debugMessages.push(newDebugMessage("error", "Lesson File has too few valid Steps. The minimum amount of Steps expected for a valid Lesson is " + context.config.MIN_LESSON_STEPS + ".", context, 0));
     }
 
     // Ended on <defaults>
