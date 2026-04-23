@@ -1,0 +1,159 @@
+<metadata>
+    <title>Rock Paper Scissors</title>
+    <description>
+        Learn to make use of simple if-conditions 
+		to create an interactive game of RPS!
+    </description>
+	<estimated-time 15>
+	<difficulty easy>
+</metadata>
+
+<defaults>
+    <panel-type popup-right>
+	<colour-scheme orange>
+</defaults>
+
+<step Intro>
+    <text>
+        Let's make a simple Rock Paper Scissors game!
+		We'll need to take the user's input, choose a 
+		random selection for the computer, and then 
+		compare the two to see the winner!
+    </text>
+	<attributes>
+		<panel-type central-focus>
+		<panel-tall>
+	</attributes>
+</step>
+
+<step Step #1>
+    <text>
+		First, we need to take the user's input.
+		Use the 'input()' function to get the user's
+		choice. Make sure to ask them if they choose
+		rock, paper, or scissors!
+    </text>
+	<attributes>
+		<hide-expected-values>
+	</attributes>
+	<requirements>
+		<has-python>input(</has-python>
+	</requirements>
+	<hint>
+		<text>
+			Create a variable called 'userInput' which
+			is assigned to 'input("rock, paper, or scissors?")
+		</text>
+		<time-passed 30>
+	</hint>
+</step>
+
+<step Step #2>
+	<text>
+		Now it's the computer's turn.
+		Write 'random.choice(["rock", "paper", "scissors"])'
+		and assign it to a variable 'computerChoice'.
+	</text>
+	<requirements>
+		<changes-made>
+	</requirements>
+</step>
+
+<step Step #3>
+	<text>
+		Once we have both values, it's time to
+		compare the two to find out who won...
+		We will do this inside the 'determine_winner()' function.
+	</text>
+</step>
+
+<step Step #4>
+	<text>
+		First, let's write an if statement to see
+		if it's a tie.
+	</text>
+	<hint-list>
+		<hint>
+			<text>
+				Use the == symbol to check if the two values are equal.
+			</text>
+			<failed-attempts 2>
+		</hint>
+		<hint>
+			<text>
+				Try seeing if the two inputs are equal.
+			</text>
+		</hint>
+	</hint-list>
+	<requirements>
+		<has-python>==</has-python>
+	</requirements>
+</step>
+
+<step Step #5>
+	<text>
+		Now, write checks for the other cases.
+		Make sure to print out whether the user
+		wins or the computer wins.
+	</text>
+	<attributes>
+		<hide-expected-values>
+	</attributes>
+	<requirements>
+		<time-passed 15>
+	</requirements>
+	<hint>
+		<text>
+			For example, if the user inputs "rock" and
+			the computer picked "paper", then the 
+			computer wins.
+		</text>
+	</hint>
+</step>
+
+<step Step #6>
+	<text>
+ 		Once that's all done, make sure to call
+		the 'determine_winner()' function with the
+		right inputs.
+	</text>
+	<requirements>
+		<changes-made>
+	</requirements>
+</step>
+
+<step Step #7>
+	<text>
+ 		Now, run your code and see if you can win!
+	</text>
+	<attributes>
+		<min-requirements 2>
+	</attributes>
+	<requirements>
+		<console-output>win</console-output>
+		<console-output>rock</console-output>
+		<console-output>paper</console-output>
+		<console-output>scissors</console-output>
+	</requirements>
+</step>
+
+<step Finished>
+	<text>
+ 		Congratulations on finishing this lesson!
+	</text>
+	<attributes>
+		<colour-scheme green>
+	</attributes>
+</step>
+
+
+
+
+<#> !!! DO NOT EDIT BELOW THIS LINE !!! </#>
+<initial-python-file py>
+import random 
+def determine_winner (user,computer ) :
+    pass
+print("Welcome to Rock Paper Scissors!") 
+
+</initial-python-file>

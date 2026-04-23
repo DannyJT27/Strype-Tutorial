@@ -1591,7 +1591,7 @@ function tagToken_hint(context: LessonParseTokenContext, parseResult: LessonPars
         }
 
         // [u] hints with no requirements nullifies all hints before it (may change in the future if custom hint picker is implemented)
-        if(currentStep.hints[currentStep.hints.length - 1].requirements.length == 0 && currentStep.hints.length > 1) {
+        if(currentStep.hints.slice(0, -1).some((h) => h.requirements.length == 0)) {
             parseResult.debugMessages.push(newDebugMessage("warning", "A Hint with no Requirements is preventing other Hints from ever being displayed. Note that the first Hint with all its Requirements fulfilled will be displayed, chosen with the order they are written inside the Step.", context, 0, "text"));
         }
 

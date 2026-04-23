@@ -22,6 +22,8 @@ export async function getExampleLessons() : Promise<Lesson[]> {
                 title: l.title,
                 description: l.description,
                 totalSteps: l.totalSteps,
+                estimatedTime: l.estimatedTime ?? undefined,
+                difficulty: l.difficulty ?? undefined,
             },
             sourceLines: lessonFileText.split("\n"),
         });   

@@ -1,9 +1,6 @@
-- title: Test Lesson 1
-  description: This is the first test lesson, containing 5 steps and some other details.
-  totalSteps: 5
-  file: testlesson.txt
-
-- title: Test Lesson 2
-  description: This is the second test lesson, containing 2 steps.
-  totalSteps: 2
-  file: testlesson2.txt
+- title: Rock Paper Scissors
+  description: Learn to make use of simple if-conditions to create an interactive game of RPS!
+  totalSteps: 9
+  difficulty: easy
+  estimatedTime: 15
+  file: rps.spyl
