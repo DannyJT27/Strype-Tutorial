@@ -1341,7 +1341,7 @@ export interface LessonParseDebugMessage {
 
     // Locating the error
     lineNum: number,
-    stepRef: string; // Not required - no stepRef means it is a problem outside a step.
+    stepRef: string; // stepRef = "" means it is a problem outside a step.
 
     // Helpful documentation link (only when relevant)
     documentationKeyword: string;

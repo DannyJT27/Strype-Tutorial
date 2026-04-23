@@ -65,7 +65,7 @@ export enum TagDisplay {
     WithCloserArg = "<$tag $argTypeShort>\n\t...\n </$tag>",
     WithNegation = "<$tag>, <!$tag>",
     WithNegationArg = "<$tag $argTypeShort>, <!$tag $argTypeShort>",
-    WithNegationCloser = "<$tag>\n\t...\n </$tag>,\n<!$tag>\n\t...\n </$tag>,\n",
+    WithNegationCloser = "<$tag>\n\t...\n </$tag>,\n<!$tag>\n\t...\n </!$tag>,\n",
 }
 
 // Used to provide extra definitions where needed
